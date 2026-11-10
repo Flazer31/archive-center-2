@@ -1,0 +1,40 @@
+Archive Center 2 — third-party notices
+
+The Archive Center source is licensed under MPL-2.0 (see LICENSE).
+The matching source package is distributed alongside these local binaries.
+
+The executable contains the following independently licensed components:
+
+* Go standard library and runtime — BSD-3-Clause, licenses/Go-LICENSE
+  https://go.dev/LICENSE
+* github.com/go-sql-driver/mysql v1.10.0 — MPL-2.0, licenses/mysql-LICENSE
+  https://github.com/go-sql-driver/mysql
+* filippo.io/edwards25519 v1.2.0 — BSD-3-Clause, licenses/edwards25519-LICENSE
+  https://filippo.io/edwards25519
+* golang.org/x/sys v0.49.0 — BSD-3-Clause, licenses/x-sys-LICENSE
+  https://go.googlesource.com/sys
+* github.com/signintech/gopdf v0.38.0 — MIT, licenses/gopdf-LICENSE
+  https://github.com/signintech/gopdf
+* github.com/phpdave11/gofpdi — MIT, licenses/gofpdi-LICENSE
+  https://github.com/phpdave11/gofpdi
+* github.com/pkg/errors v0.8.1 — BSD-2-Clause, licenses/pkg-errors-LICENSE
+  https://github.com/pkg/errors
+* github.com/ledongthuc/pdf — BSD-3-Clause, licenses/pdf-LICENSE
+  Used by the PDF tests in the matching source package.
+  https://github.com/ledongthuc/pdf
+* Noto Sans KR — SIL Open Font License 1.1, licenses/NotoSansKR-OFL.txt
+  The unmodified font is embedded for selected-memory PDF rendering.
+
+MariaDB is a separate application, not linked into the AC2 executable and
+not bundled in this ZIP. On Windows the start file downloads the official
+MariaDB Community Server 13.0.2 ZIP and verifies its published SHA-256.
+Its original COPYING, THIRDPARTY and component license files remain in
+%LOCALAPPDATA%/ArchiveCenter2/runtime/mariadb/13.0.2. MariaDB Server is GPL-2.0; its individual components may
+have different licenses. Corresponding official source:
+https://archive.mariadb.org/mariadb-13.0.2/source/
+On POSIX, the OS package manager supplies MariaDB and its license notices.
+Homebrew and MariaDB repository setup tools are downloaded from their
+upstream sites during preparation when needed; they are not bundled here.
+
+RisuAI and model/embedding providers are external services/applications.
+They are not included in this package.

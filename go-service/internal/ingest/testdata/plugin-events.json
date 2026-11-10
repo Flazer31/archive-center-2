@@ -1,0 +1,1062 @@
+[
+ {
+  "boot_id": "mvj9ga3l-vjip8s",
+  "seq": 5,
+  "hook": "load",
+  "host_time_ms": 1792656596002,
+  "plugin_version": "0.0.6",
+  "runtime": {
+   "platform": "node"
+  },
+  "backend_version": {
+   "ok": true,
+   "status": 200,
+   "json": {}
+  },
+  "coords": {
+   "character_index": 2,
+   "chat_index": 5
+  },
+  "stored_chat": {
+   "chat_id": "chat-A",
+   "fm_index": null,
+   "binded_persona": null,
+   "is_streaming": null,
+   "last_date": null,
+   "modules": null,
+   "chat_keys": [
+    "id",
+    "message",
+    "scriptstate"
+   ],
+   "message_count": 8,
+   "rows": [
+    {
+     "i": 0,
+     "role": "char",
+     "chat_id": "g0",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 8,
+      "h": "c49d1a1ad4edbfb6",
+      "text": "greeting"
+     }
+    },
+    {
+     "i": 1,
+     "role": "user",
+     "chat_id": "u1",
+     "time": 100,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 4,
+      "h": "ecb318bacbef088c",
+      "text": "첫 입력"
+     }
+    },
+    {
+     "i": 2,
+     "role": "user",
+     "chat_id": "u2",
+     "time": 101,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 12,
+      "h": "b1e261db8396e29f",
+      "text": "둘째 입력 😀🇰🇷"
+     }
+    },
+    {
+     "i": 3,
+     "role": "char",
+     "chat_id": "a1",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": [
+      "generationId"
+     ],
+     "generation_id": "gen-1",
+     "generation_info_values": {
+      "len": 24,
+      "h": "379a35b07e754220"
+     },
+     "prompt_info": null,
+     "data": {
+      "len": 64,
+      "h": "9c84ab51270a50f7",
+      "text": "<!-- yumi-tr:v1:ab12:start -->이벤트 번역<!-- yumi-tr:v1:ab12:end -->"
+     }
+    },
+    {
+     "i": 4,
+     "role": "char",
+     "chat_id": "a2",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 66,
+      "h": "71b9b508f39618ca",
+      "text": "<!-- yumi-tr:v1:zz99:start -->기록 없는 번역<!-- yumi-tr:v1:zz99:end -->"
+     }
+    },
+    {
+     "i": 5,
+     "role": "char",
+     "chat_id": null,
+     "time": null,
+     "disabled": true,
+     "is_comment": true,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 6,
+      "h": "f4be8db3b6873945",
+      "text": "branch"
+     }
+    },
+    {
+     "i": 6,
+     "role": "user",
+     "chat_id": "u3",
+     "time": null,
+     "disabled": "allBefore",
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 1,
+      "h": "0002b61dfd0c5087",
+      "text": "x"
+     }
+    },
+    {
+     "i": 7,
+     "role": "user",
+     "chat_id": "u4",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 16,
+      "h": "e29b3f0cc38167b0",
+      "text": "lone � surrogate"
+     }
+    }
+   ],
+   "scriptstate": {
+    "$__yumi_tr.ab12": {
+     "type": "string",
+     "translation_record": true,
+     "len": 28,
+     "h": "d6719a00b0543ae4",
+     "text": "u:{\"model\":\"ORIGINAL REPLY\"}"
+    },
+    "mood": {
+     "type": "string",
+     "len": 12,
+     "h": "4040b774aba807c6"
+    }
+   },
+   "gl_global_variables": {}
+  }
+ },
+ {
+  "boot_id": "mvj9ga3l-vjip8s",
+  "seq": 6,
+  "hook": "beforeRequest",
+  "host_time_ms": 1792656596031,
+  "plugin_version": "0.0.6",
+  "type": "model",
+  "coords": {
+   "character_index": 2,
+   "chat_index": 5
+  },
+  "payload": {
+   "is_array": true,
+   "length": 1,
+   "messages": [
+    {
+     "i": 0,
+     "role": "user",
+     "name": null,
+     "keys": [
+      "role",
+      "content"
+     ],
+     "content": {
+      "len": 1,
+      "h": "0002b615f50c43ef"
+     }
+    }
+   ]
+  },
+  "stored_chat": {
+   "chat_id": "chat-A",
+   "fm_index": null,
+   "binded_persona": null,
+   "is_streaming": null,
+   "last_date": null,
+   "modules": null,
+   "chat_keys": [
+    "id",
+    "message",
+    "scriptstate"
+   ],
+   "message_count": 8,
+   "rows": [
+    {
+     "i": 0,
+     "role": "char",
+     "chat_id": "g0",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 8,
+      "h": "c49d1a1ad4edbfb6"
+     }
+    },
+    {
+     "i": 1,
+     "role": "user",
+     "chat_id": "u1",
+     "time": 100,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 4,
+      "h": "ecb318bacbef088c"
+     }
+    },
+    {
+     "i": 2,
+     "role": "user",
+     "chat_id": "u2",
+     "time": 101,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 12,
+      "h": "b1e261db8396e29f"
+     }
+    },
+    {
+     "i": 3,
+     "role": "char",
+     "chat_id": "a1",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": [
+      "generationId"
+     ],
+     "generation_id": "gen-1",
+     "generation_info_values": {
+      "len": 24,
+      "h": "379a35b07e754220"
+     },
+     "prompt_info": null,
+     "data": {
+      "len": 64,
+      "h": "9c84ab51270a50f7"
+     }
+    },
+    {
+     "i": 4,
+     "role": "char",
+     "chat_id": "a2",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 66,
+      "h": "71b9b508f39618ca"
+     }
+    },
+    {
+     "i": 5,
+     "role": "char",
+     "chat_id": null,
+     "time": null,
+     "disabled": true,
+     "is_comment": true,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 6,
+      "h": "f4be8db3b6873945"
+     }
+    },
+    {
+     "i": 6,
+     "role": "user",
+     "chat_id": "u3",
+     "time": null,
+     "disabled": "allBefore",
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 1,
+      "h": "0002b61dfd0c5087"
+     }
+    },
+    {
+     "i": 7,
+     "role": "user",
+     "chat_id": "u4",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 16,
+      "h": "e29b3f0cc38167b0"
+     }
+    }
+   ],
+   "scriptstate": {
+    "$__yumi_tr.ab12": {
+     "type": "string",
+     "translation_record": true,
+     "len": 28,
+     "h": "d6719a00b0543ae4"
+    },
+    "mood": {
+     "type": "string",
+     "len": 12,
+     "h": "4040b774aba807c6"
+    }
+   },
+   "gl_global_variables": {}
+  },
+  "parser_reads": {
+   "{{user}}": {
+    "len": 0,
+    "h": "00001505811c9dc5",
+    "text": ""
+   },
+   "{{getglobalvar::toggle_lang}}": {
+    "len": 0,
+    "h": "00001505811c9dc5",
+    "text": ""
+   }
+  }
+ },
+ {
+  "boot_id": "mvj9ga3l-vjip8s",
+  "seq": 7,
+  "hook": "output",
+  "host_time_ms": 1792656596032,
+  "plugin_version": "0.0.6",
+  "listener": {
+   "character_index": 2,
+   "chat_index": 5,
+   "message_index": 3
+  },
+  "current": {
+   "character_index": 2,
+   "chat_index": 5
+  },
+  "event_chat": {
+   "chat_id": "chat-A",
+   "fm_index": null,
+   "binded_persona": null,
+   "is_streaming": null,
+   "last_date": null,
+   "modules": null,
+   "chat_keys": [
+    "id",
+    "message",
+    "scriptstate"
+   ],
+   "message_count": 8,
+   "rows": [
+    {
+     "i": 0,
+     "role": "char",
+     "chat_id": "g0",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 8,
+      "h": "c49d1a1ad4edbfb6"
+     }
+    },
+    {
+     "i": 1,
+     "role": "user",
+     "chat_id": "u1",
+     "time": 100,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 4,
+      "h": "ecb318bacbef088c"
+     }
+    },
+    {
+     "i": 2,
+     "role": "user",
+     "chat_id": "u2",
+     "time": 101,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 12,
+      "h": "b1e261db8396e29f"
+     }
+    },
+    {
+     "i": 3,
+     "role": "char",
+     "chat_id": "a1",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": [
+      "generationId"
+     ],
+     "generation_id": "gen-1",
+     "generation_info_values": {
+      "len": 24,
+      "h": "379a35b07e754220"
+     },
+     "prompt_info": null,
+     "data": {
+      "len": 64,
+      "h": "9c84ab51270a50f7"
+     }
+    },
+    {
+     "i": 4,
+     "role": "char",
+     "chat_id": "a2",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 66,
+      "h": "71b9b508f39618ca"
+     }
+    },
+    {
+     "i": 5,
+     "role": "char",
+     "chat_id": null,
+     "time": null,
+     "disabled": true,
+     "is_comment": true,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 6,
+      "h": "f4be8db3b6873945"
+     }
+    },
+    {
+     "i": 6,
+     "role": "user",
+     "chat_id": "u3",
+     "time": null,
+     "disabled": "allBefore",
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 1,
+      "h": "0002b61dfd0c5087"
+     }
+    },
+    {
+     "i": 7,
+     "role": "user",
+     "chat_id": "u4",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 16,
+      "h": "e29b3f0cc38167b0"
+     }
+    }
+   ],
+   "scriptstate": {
+    "$__yumi_tr.ab12": {
+     "type": "string",
+     "translation_record": true,
+     "len": 28,
+     "h": "d6719a00b0543ae4"
+    },
+    "mood": {
+     "type": "string",
+     "len": 12,
+     "h": "4040b774aba807c6"
+    }
+   },
+   "gl_global_variables": {}
+  },
+  "reread_chat": {
+   "chat_id": "chat-A",
+   "fm_index": null,
+   "binded_persona": null,
+   "is_streaming": null,
+   "last_date": null,
+   "modules": null,
+   "chat_keys": [
+    "id",
+    "message",
+    "scriptstate"
+   ],
+   "message_count": 8,
+   "rows": [
+    {
+     "i": 0,
+     "role": "char",
+     "chat_id": "g0",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 8,
+      "h": "c49d1a1ad4edbfb6"
+     }
+    },
+    {
+     "i": 1,
+     "role": "user",
+     "chat_id": "u1",
+     "time": 100,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 4,
+      "h": "ecb318bacbef088c"
+     }
+    },
+    {
+     "i": 2,
+     "role": "user",
+     "chat_id": "u2",
+     "time": 101,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 12,
+      "h": "b1e261db8396e29f"
+     }
+    },
+    {
+     "i": 3,
+     "role": "char",
+     "chat_id": "a1",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": [
+      "generationId"
+     ],
+     "generation_id": "gen-1",
+     "generation_info_values": {
+      "len": 24,
+      "h": "379a35b07e754220"
+     },
+     "prompt_info": null,
+     "data": {
+      "len": 63,
+      "h": "d5e66e0a4fd67f7e",
+      "text": "<!-- yumi-tr:v1:ab12:start -->나중 번역<!-- yumi-tr:v1:ab12:end -->"
+     }
+    },
+    {
+     "i": 4,
+     "role": "char",
+     "chat_id": "a2",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 66,
+      "h": "71b9b508f39618ca"
+     }
+    },
+    {
+     "i": 5,
+     "role": "char",
+     "chat_id": null,
+     "time": null,
+     "disabled": true,
+     "is_comment": true,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 6,
+      "h": "f4be8db3b6873945"
+     }
+    },
+    {
+     "i": 6,
+     "role": "user",
+     "chat_id": "u3",
+     "time": null,
+     "disabled": "allBefore",
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 1,
+      "h": "0002b61dfd0c5087"
+     }
+    },
+    {
+     "i": 7,
+     "role": "user",
+     "chat_id": "u4",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 16,
+      "h": "e29b3f0cc38167b0"
+     }
+    }
+   ],
+   "scriptstate": {
+    "$__yumi_tr.ab12": {
+     "type": "string",
+     "translation_record": true,
+     "len": 28,
+     "h": "d6719a00b0543ae4"
+    },
+    "mood": {
+     "type": "string",
+     "len": 12,
+     "h": "4040b774aba807c6"
+    }
+   },
+   "gl_global_variables": {}
+  }
+ },
+ {
+  "boot_id": "mvj9ga3l-vjip8s",
+  "seq": 8,
+  "hook": "beforeRequest",
+  "host_time_ms": 1792656596032,
+  "plugin_version": "0.0.6",
+  "type": "model",
+  "coords": {
+   "character_index": 2,
+   "chat_index": 5
+  },
+  "payload": {
+   "is_array": true,
+   "length": 0,
+   "messages": []
+  },
+  "stored_chat": {
+   "chat_id": null,
+   "fm_index": null,
+   "binded_persona": null,
+   "is_streaming": null,
+   "last_date": null,
+   "modules": null,
+   "chat_keys": [
+    "message",
+    "scriptstate"
+   ],
+   "message_count": 8,
+   "rows": [
+    {
+     "i": 0,
+     "role": "char",
+     "chat_id": "g0",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 8,
+      "h": "c49d1a1ad4edbfb6",
+      "text": "greeting"
+     }
+    },
+    {
+     "i": 1,
+     "role": "user",
+     "chat_id": "u1",
+     "time": 100,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 4,
+      "h": "ecb318bacbef088c",
+      "text": "첫 입력"
+     }
+    },
+    {
+     "i": 2,
+     "role": "user",
+     "chat_id": "u2",
+     "time": 101,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 12,
+      "h": "b1e261db8396e29f",
+      "text": "둘째 입력 😀🇰🇷"
+     }
+    },
+    {
+     "i": 3,
+     "role": "char",
+     "chat_id": "a1",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": [
+      "generationId"
+     ],
+     "generation_id": "gen-1",
+     "generation_info_values": {
+      "len": 24,
+      "h": "379a35b07e754220"
+     },
+     "prompt_info": null,
+     "data": {
+      "len": 59,
+      "h": "87a20be4e4f42378",
+      "text": "<!-- yumi-tr:v1:ab12:start -->x<!-- yumi-tr:v1:ab12:end -->"
+     }
+    },
+    {
+     "i": 4,
+     "role": "char",
+     "chat_id": "a2",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 66,
+      "h": "71b9b508f39618ca",
+      "text": "<!-- yumi-tr:v1:zz99:start -->기록 없는 번역<!-- yumi-tr:v1:zz99:end -->"
+     }
+    },
+    {
+     "i": 5,
+     "role": "char",
+     "chat_id": null,
+     "time": null,
+     "disabled": true,
+     "is_comment": true,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 6,
+      "h": "f4be8db3b6873945",
+      "text": "branch"
+     }
+    },
+    {
+     "i": 6,
+     "role": "user",
+     "chat_id": "u3",
+     "time": null,
+     "disabled": "allBefore",
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 1,
+      "h": "0002b61dfd0c5087",
+      "text": "x"
+     }
+    },
+    {
+     "i": 7,
+     "role": "user",
+     "chat_id": "u4",
+     "time": null,
+     "disabled": null,
+     "is_comment": null,
+     "name": null,
+     "saying": null,
+     "other_user": null,
+     "generation_info": null,
+     "generation_id": null,
+     "generation_info_values": null,
+     "prompt_info": null,
+     "data": {
+      "len": 16,
+      "h": "e29b3f0cc38167b0",
+      "text": "lone � surrogate"
+     }
+    }
+   ],
+   "scriptstate": {
+    "$__yumi_tr.ab12": {
+     "type": "string",
+     "translation_record": true,
+     "len": 28,
+     "h": "d6719a00b0543ae4",
+     "text": "u:{\"model\":\"ORIGINAL REPLY\"}"
+    },
+    "mood": {
+     "type": "string",
+     "len": 12,
+     "h": "4040b774aba807c6"
+    }
+   },
+   "gl_global_variables": {}
+  },
+  "parser_reads": {
+   "{{user}}": {
+    "len": 0,
+    "h": "00001505811c9dc5",
+    "text": ""
+   },
+   "{{getglobalvar::toggle_lang}}": {
+    "len": 0,
+    "h": "00001505811c9dc5",
+    "text": ""
+   }
+  }
+ }
+]

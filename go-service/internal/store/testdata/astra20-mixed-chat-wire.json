@@ -1,0 +1,283 @@
+[
+  {
+    "boot_id": "mvjcj2xo-cr8g3g",
+    "seq": 6,
+    "hook": "output",
+    "host_time_ms": 1792661765559,
+    "plugin_version": "0.0.7",
+    "listener": {
+      "character_index": 0,
+      "chat_index": 0,
+      "message_index": 1
+    },
+    "current": {
+      "character_index": 0,
+      "chat_index": 0
+    },
+    "event_chat": {
+      "chat_id": "origin",
+      "fm_index": null,
+      "binded_persona": null,
+      "is_streaming": null,
+      "last_date": null,
+      "modules": null,
+      "chat_keys": [
+        "id",
+        "message",
+        "scriptstate"
+      ],
+      "message_count": 2,
+      "rows": [
+        {
+          "i": 0,
+          "role": "user",
+          "chat_id": "u",
+          "time": null,
+          "disabled": null,
+          "is_comment": null,
+          "name": null,
+          "saying": null,
+          "other_user": null,
+          "generation_info": null,
+          "generation_id": null,
+          "generation_info_values": null,
+          "prompt_info": null,
+          "data": {
+            "len": 1,
+            "h": "0002b616f40c425c",
+            "text": "q"
+          }
+        },
+        {
+          "i": 1,
+          "role": "char",
+          "chat_id": "a",
+          "time": null,
+          "disabled": null,
+          "is_comment": null,
+          "name": null,
+          "saying": null,
+          "other_user": null,
+          "generation_info": [
+            "generationId"
+          ],
+          "generation_id": "g",
+          "generation_info_values": {
+            "len": 20,
+            "h": "877df93fe199714d"
+          },
+          "prompt_info": null,
+          "data": {
+            "len": 53,
+            "h": "5e2a0deabc222e3e",
+            "text": "<GigaTrans>origin body</GigaTrans>display origin body"
+          }
+        }
+      ],
+      "scriptstate": {},
+      "gl_global_variables": {}
+    },
+    "reread_chat": {
+      "chat_id": "destination",
+      "fm_index": null,
+      "binded_persona": null,
+      "is_streaming": null,
+      "last_date": null,
+      "modules": null,
+      "chat_keys": [
+        "id",
+        "message",
+        "scriptstate"
+      ],
+      "message_count": 2,
+      "rows": [
+        {
+          "i": 0,
+          "role": "user",
+          "chat_id": "u",
+          "time": null,
+          "disabled": null,
+          "is_comment": null,
+          "name": null,
+          "saying": null,
+          "other_user": null,
+          "generation_info": null,
+          "generation_id": null,
+          "generation_info_values": null,
+          "prompt_info": null,
+          "data": {
+            "len": 1,
+            "h": "0002b616f40c425c",
+            "text": "q"
+          }
+        },
+        {
+          "i": 1,
+          "role": "char",
+          "chat_id": "a",
+          "time": null,
+          "disabled": null,
+          "is_comment": null,
+          "name": null,
+          "saying": null,
+          "other_user": null,
+          "generation_info": [
+            "generationId"
+          ],
+          "generation_id": "g",
+          "generation_info_values": {
+            "len": 20,
+            "h": "877df93fe199714d"
+          },
+          "prompt_info": null,
+          "data": {
+            "len": 33,
+            "h": "e3da21a097113680",
+            "text": "<GigaTrans>A</GigaTrans>display A"
+          }
+        }
+      ],
+      "scriptstate": {},
+      "gl_global_variables": {}
+    }
+  },
+  {
+    "boot_id": "mvjcj2xo-cr8g3g",
+    "seq": 7,
+    "hook": "output",
+    "host_time_ms": 1792661765583,
+    "plugin_version": "0.0.7",
+    "listener": {
+      "character_index": 0,
+      "chat_index": 0,
+      "message_index": 1
+    },
+    "current": {
+      "character_index": 0,
+      "chat_index": 0
+    },
+    "event_chat": {
+      "chat_id": "destination",
+      "fm_index": null,
+      "binded_persona": null,
+      "is_streaming": null,
+      "last_date": null,
+      "modules": null,
+      "chat_keys": [
+        "id",
+        "message",
+        "scriptstate"
+      ],
+      "message_count": 2,
+      "rows": [
+        {
+          "i": 0,
+          "role": "user",
+          "chat_id": "u",
+          "time": null,
+          "disabled": null,
+          "is_comment": null,
+          "name": null,
+          "saying": null,
+          "other_user": null,
+          "generation_info": null,
+          "generation_id": null,
+          "generation_info_values": null,
+          "prompt_info": null,
+          "data": {
+            "len": 1,
+            "h": "0002b616f40c425c"
+          }
+        },
+        {
+          "i": 1,
+          "role": "char",
+          "chat_id": "a",
+          "time": null,
+          "disabled": null,
+          "is_comment": null,
+          "name": null,
+          "saying": null,
+          "other_user": null,
+          "generation_info": [
+            "generationId"
+          ],
+          "generation_id": "g",
+          "generation_info_values": {
+            "len": 20,
+            "h": "877df93fe199714d"
+          },
+          "prompt_info": null,
+          "data": {
+            "len": 33,
+            "h": "56866c42a7f41e36",
+            "text": "<GigaTrans>B</GigaTrans>display B"
+          }
+        }
+      ],
+      "scriptstate": {},
+      "gl_global_variables": {}
+    },
+    "reread_chat": {
+      "chat_id": "destination",
+      "fm_index": null,
+      "binded_persona": null,
+      "is_streaming": null,
+      "last_date": null,
+      "modules": null,
+      "chat_keys": [
+        "id",
+        "message",
+        "scriptstate"
+      ],
+      "message_count": 2,
+      "rows": [
+        {
+          "i": 0,
+          "role": "user",
+          "chat_id": "u",
+          "time": null,
+          "disabled": null,
+          "is_comment": null,
+          "name": null,
+          "saying": null,
+          "other_user": null,
+          "generation_info": null,
+          "generation_id": null,
+          "generation_info_values": null,
+          "prompt_info": null,
+          "data": {
+            "len": 1,
+            "h": "0002b616f40c425c"
+          }
+        },
+        {
+          "i": 1,
+          "role": "char",
+          "chat_id": "a",
+          "time": null,
+          "disabled": null,
+          "is_comment": null,
+          "name": null,
+          "saying": null,
+          "other_user": null,
+          "generation_info": [
+            "generationId"
+          ],
+          "generation_id": "g",
+          "generation_info_values": {
+            "len": 20,
+            "h": "877df93fe199714d"
+          },
+          "prompt_info": null,
+          "data": {
+            "len": 33,
+            "h": "e3da21a097113680"
+          }
+        }
+      ],
+      "scriptstate": {},
+      "gl_global_variables": {}
+    }
+  }
+]
