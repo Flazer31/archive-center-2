@@ -32,6 +32,20 @@ import (
 	"archivecenter2/goservice/internal/updateapi"
 )
 
+// releaseRepo is where a released build looks for newer versions (user
+// 2026-11-10: turn the update check on now that releases are on GitHub).
+// Nothing is asked of it until the user presses the update check.
+const releaseRepo = "Flazer31/archive-center-2"
+
+// updateRepoDefault is the update repository when no -update-repo flag is
+// given: AC2_UPDATE_GITHUB_REPO when set ("off" = none), else releaseRepo.
+func updateRepoDefault(env string) string {
+	if env = strings.TrimSpace(env); env != "" {
+		return env
+	}
+	return releaseRepo
+}
+
 func main() {
 	os.Exit(runBackend())
 }
@@ -52,10 +66,13 @@ func runBackend() int {
 	// memory vectors (Voyage AI; key from the VOYAGE_API_KEY environment variable); empty = off
 	embedModel := flag.String("embed-model", "voyage-context-4", "Voyage model for memory vectors: voyage-context-4 (a turn's memories embedded with the turn as context) or another, e.g. voyage-4-large; empty = no vectors")
 	managed := flag.Bool("managed", false, "start the package's own MariaDB and backend together")
-	updateRepo := flag.String("update-repo", os.Getenv("AC2_UPDATE_GITHUB_REPO"), "update repository owner/name; empty = not configured")
+	updateRepo := flag.String("update-repo", updateRepoDefault(os.Getenv("AC2_UPDATE_GITHUB_REPO")), "update repository owner/name; off = do not look for updates")
 	updateAPI := flag.String("update-api", os.Getenv("AC2_UPDATE_API_BASE"), "GitHub Releases API base URL")
 	updateAware := flag.Bool("update-managed", false, "internal: update-aware package launcher")
 	flag.Parse()
+	if *updateRepo == "off" {
+		*updateRepo = ""
+	}
 	base, err := os.Getwd()
 	if *managed {
 		var executable string

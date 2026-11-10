@@ -26,6 +26,24 @@ RisuAI와 PocketRisu에서 쓰는 장기 기억 도구예요. 대화가 길어�
 
 ## 설치
 
+### 한 줄 설치 (Linux·macOS·Termux)
+
+Linux x64/arm64, macOS Intel/Apple Silicon, Termux에서는 터미널에 아래 명령을 넣어요.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh
+```
+
+기기에 맞는 패키지를 받아 SHA-256을 확인하고 `~/archive-center2/ac2-<버전>`에 풀어 바로 시작해요. 새 설치 전용이고, 같은 버전 폴더가 있으면 아무것도 바꾸지 않고 멈춰요. 다음부터는 그 폴더의 `01_AC2_start.sh`로 시작해요. 버전을 지정하려면 아래처럼 써요.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.0.0
+```
+
+실제 Linux·macOS·Termux 기기에서는 확인하지 못했어요. 시작한 뒤에는 아래 3번부터 이어 가세요.
+
+### ZIP으로 설치
+
 1. [최신 버전 다운로드](https://github.com/Flazer31/archive-center-2/releases/latest)에서 내 운영체제에 맞는 ZIP을 받아 **새 폴더**에 풀어요.
 
    | 운영체제 | 파일 | 시작 |
@@ -53,7 +71,9 @@ RisuAI와 PocketRisu에서 쓰는 장기 기억 도구예요. 대화가 길어�
 
 - data(기억·설정·키·토큰)는 프로그램 폴더 밖 공용 위치에 있어요(Windows: `%LOCALAPPDATA%\ArchiveCenter2\data`). 프로그램 폴더를 지워도 남아요.
 - API 키는 가려진 채 암호화해 저장해요. data 폴더와 토큰 파일은 다른 사람에게 보내지 마세요.
-- 새 버전은 새 ZIP을 새 폴더에 풀어 실행하면 돼요. 자동 업데이트 확인은 하지 않아요.
+- 설정의 '업데이트' 탭에서 「업데이트 확인」을 누르면 GitHub 저장소(`Flazer31/archive-center-2`)의 최신 릴리스를 확인해요. 새 버전이 있으면 「지금 업데이트」로 내려받아 적용한 뒤 다시 시작해요. 실패하면 이전 프로그램으로 되돌려요.
+- 버튼을 누를 때만 GitHub에 접속하고 자동으로 확인하지 않아요. data는 그대로 이어지고, 플러그인 파일(`archive-center-2.js`)은 RisuAI에서 따로 다시 가져와야 해요. 새 ZIP을 새 폴더에 풀어 실행하는 방법도 쓸 수 있어요. 업데이트를 찾지 않게 하려면 환경변수 `AC2_UPDATE_GITHUB_REPO=off`를 설정하세요.
+- 오류와 로그는 그대로 보여 주고 API 키·토큰·비밀번호 값만 가려요. 등록되지 않은 오류도 백엔드가 보낸 코드와 설명을 함께 보여 줘요.
 - 기본 설정은 모든 주소에서 연결을 받아요. 이 PC에서만 받게 하려면 시작 파일 뒤에 `-listen 127.0.0.1`을 붙이세요.
 
 ## 알려진 제한

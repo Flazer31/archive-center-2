@@ -826,7 +826,10 @@
     if (res.json && res.json.code === "database_not_ready") return String(res.json.message || "");
     if (res.code && ERR_TEXT[res.code]) return ERR_TEXT[res.code];
     if (res.kind === "connect_failed" || res.kind === "timeout") return "백엔드에 연결할 수 없어요. 주소와 백엔드가 켜져 있는지 확인해 주세요.";
-    return "요청이 실패했어요 (" + (res.status || res.kind) + ").";
+    // a code without a text of its own is shown with what the backend said
+    // (user 11-10: errors are not hidden; only credential values are masked)
+    const more = res.detail || (res.json && (res.json.detail || res.json.message)) || "";
+    return "요청이 실패했어요 (" + [res.status || res.kind, res.code].filter(Boolean).join(" · ") + ")." + (more ? " " + maskCredentials(more, "") : "");
   }
   function el(tag, attrs, ...kids) {
     const e = document.createElement(tag);
@@ -1735,7 +1738,7 @@
     return t.replace(/(bearer\s+)[^\s"',;]+/gi, "$1[가림]")
       .replace(/((?:api[_ -]?key|access[_ -]?token|authorization|[a-z_]*password|passwd|secret|token)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s"',;&}]+)/gi, "$1[가림]")
       .replace(/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/gi, "$1[접속 정보 가림]@")
-      .replace(/(?:ac2-(?:[a-z2-7]{6}-){3}[a-z2-7]{6}|sk-[A-Za-z0-9_-]{8,}|AIza[A-Za-z0-9_-]{20,})/g, "[접속 정보 가림]");
+      .replace(/(^|[^A-Za-z0-9])(?:ac2-(?:[a-z2-7]{6}-){3}[a-z2-7]{6}|sk-[A-Za-z0-9_-]{8,}|AIza[A-Za-z0-9_-]{20,})/g, "$1[접속 정보 가림]");
   }
   async function collectDiagnosticReport() {
     const c = await conn();

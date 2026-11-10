@@ -24,7 +24,9 @@ var patterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)((?:api[_ -]?key|access[_ -]?token|authorization|[a-z_]*password|passwd|secret|token)["']?\s*[:=]\s*["']?)[^\s"',;&}]+`),
 	regexp.MustCompile(`(?i)(https?://)[^/\s:@]+:[^/\s@]+@`),
 	regexp.MustCompile(`[^\s"':]+:[^\r\n]+@(?:tcp|unix)\([^)]*\)`),
-	regexp.MustCompile(`(?:ac2-(?:[a-z2-7]{6}-){3}[a-z2-7]{6}|sk-[A-Za-z0-9_-]{8,}|AIza[A-Za-z0-9_-]{20,})`),
+	// a key starts a word: "task-queue-12345678" and "disk-usage-report" in a
+	// path are not keys (user 11-10: only credentials are masked)
+	regexp.MustCompile(`(^|[^A-Za-z0-9])(?:ac2-(?:[a-z2-7]{6}-){3}[a-z2-7]{6}|sk-[A-Za-z0-9_-]{8,}|AIza[A-Za-z0-9_-]{20,})`),
 	regexp.MustCompile(`(?i)(IDENTIFIED\s+BY\s+['"])[^'"]*`),
 }
 
@@ -90,8 +92,11 @@ func Redact(text string, secrets ...string) string {
 	text = quotedCredential.ReplaceAllString(text, "${1}[가림]")
 	for i, pattern := range patterns {
 		replacement := "${1}[가림]"
-		if i == 3 || i == 4 {
+		if i == 3 {
 			replacement = "[접속 정보 가림]"
+		}
+		if i == 4 {
+			replacement = "${1}[접속 정보 가림]"
 		}
 		if i == 3 {
 			// Timestamps contain colons too. Keep their anchored prefix out

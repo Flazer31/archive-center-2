@@ -210,3 +210,23 @@ func TestCollectLogsKeepsRuntimeErrorPayloadsMasksCredentials(t *testing.T) {
 		}
 	}
 }
+
+// A key starts a word. Ordinary words and paths that only contain "sk-"
+// (task-, disk-, risk-) are not credentials and stay readable (user
+// 2026-11-10: only credential values are masked, not logs or errors).
+func TestRedactKeepsWordsThatOnlyContainAKeyPrefix(t *testing.T) {
+	in := `read C:\data\task-queue-12345678\disk-usage-report.log: access denied; risk-assessment-2026 failed`
+	if got := Redact(in); got != in {
+		t.Fatalf("ordinary text was masked:\n%s", got)
+	}
+	for in, want := range map[string]string{
+		`Incorrect API key provided: sk-abcdEFGH12345678.`: `Incorrect API key provided: [접속 정보 가림].`,
+		`sk-abcdEFGH12345678 rejected`:                     `[접속 정보 가림] rejected`,
+		`key="sk-abcdEFGH12345678"`:                        `key="[접속 정보 가림]"`,
+		`(AIzaSyA1234567890abcdefghij_KLMN)`:               `([접속 정보 가림])`,
+	} {
+		if got := Redact(in); got != want {
+			t.Fatalf("%q: %q, want %q", in, got, want)
+		}
+	}
+}

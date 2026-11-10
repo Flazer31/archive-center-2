@@ -4048,3 +4048,19 @@ test("turn HUD (review 19): a retry is told on the chip from its first call", as
   const h = await u6Host({ hud: v });
   try { assert.ok(u6Text(h.root).includes("AC2 · 다시 시도 중 1/1"), u6Text(h.root)); } finally { await h.close(); }
 });
+
+// user 2026-11-10: errors and logs are not hidden; only credential values are.
+test("errors: a code without a text of its own shows the backend's code and message; only credential values are masked", () => {
+  const a = SRC.indexOf("  function errText(res) {"), b = SRC.indexOf("  function el(tag, attrs", a);
+  const m = SRC.indexOf("  function maskCredentials(text, token) {"), n = SRC.indexOf("\n  }", m) + 4;
+  assert.ok(a > 0 && b > a && m > 0 && n > m);
+  const ctx = vm.createContext({ ERR_TEXT: { known_code: "아는 오류예요." } });
+  vm.runInContext(SRC.slice(a, b) + SRC.slice(m, n) + "\nglobalThis.errText = errText; globalThis.maskCredentials = maskCredentials;", ctx);
+  assert.strictEqual(ctx.errText({ ok: false, status: 400, code: "known_code", json: { detail: "x" } }), "아는 오류예요.");
+  const shown = ctx.errText({ ok: false, status: 400, code: "weird_code", json: { code: "weird_code", detail: "model field is required in task-queue-12345678" } });
+  assert.ok(shown.includes("400 · weird_code") && shown.includes("model field is required in task-queue-12345678"), shown);
+  const keyed = ctx.errText({ ok: false, status: 401, code: "provider_failed", json: { message: "Incorrect API key provided: sk-abcdEFGH12345678." } });
+  assert.ok(keyed.includes("Incorrect API key provided: [접속 정보 가림].") && !keyed.includes("abcdEFGH"), keyed);
+  assert.strictEqual(ctx.errText({ ok: false, status: 500, kind: "http_error" }), "요청이 실패했어요 (500).");
+  assert.strictEqual(ctx.maskCredentials("read disk-usage-report.log and risk-assessment-2026: denied", ""), "read disk-usage-report.log and risk-assessment-2026: denied");
+});
