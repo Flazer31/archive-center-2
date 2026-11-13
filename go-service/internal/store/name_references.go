@@ -43,7 +43,21 @@ func memoryReferenceSlots(m *memory.Memory, visit func(string, *string)) {
 		list(prefix+".was", e.Was)
 	}
 	if b := m.Basis; b != nil {
-		visit("basis.from", &b.From)
+		// several sources ("n1,n2") are one slot each; one keeps its path
+		if parts := strings.Split(b.From, ","); len(parts) > 1 {
+			for i, p := range parts {
+				t := strings.TrimSpace(p)
+				if t == "" {
+					continue
+				}
+				v := t
+				visit(fmt.Sprintf("basis.from.%d", i), &v)
+				parts[i] = strings.Replace(p, t, v, 1)
+			}
+			b.From = strings.Join(parts, ",")
+		} else {
+			visit("basis.from", &b.From)
+		}
 		visit("basis.ref", &b.Ref)
 	}
 	list("unaware", m.Unaware)

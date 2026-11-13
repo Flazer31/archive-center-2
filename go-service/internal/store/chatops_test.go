@@ -195,7 +195,7 @@ func TestU2DeleteEveryOwnedTableAndSharedVectors(t *testing.T) {
 	other := u2Session(t, db, "chat:B", "둘")
 	j, it := u2Save(t, db, s, 0, u2Output)
 	_, keep := u2Save(t, db, other, 0, `{"memories":[{"id":"m1","kind":"fact","body":"다른 채팅"}]}`)
-	if err := db.Grant(s.Key, []int{s.ActiveTurns()[0].ID}); err != nil {
+	if err := db.Grant(s.Key, []memory.Source{memory.SourceOf(s.Key, s.ActiveTurns()[0])}); err != nil {
 		t.Fatal(err)
 	}
 	for _, q := range []string{`INSERT INTO session_branch VALUES ('chat:A','chat:gone','point',NULL,NULL,NULL)`, `INSERT INTO branch_copies VALUES ('chat:A',1,'k','{}')`, `INSERT INTO raw_observations (received_at,receive_seq,chat_id,event) VALUES (NOW(),1,'A','{}')`, `INSERT INTO raw_observations (received_at,receive_seq,chat_id,chat_id2,event) VALUES (NOW(),2,'B','A','other observation')`} {

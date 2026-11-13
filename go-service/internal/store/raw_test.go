@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"os"
@@ -89,5 +90,30 @@ func TestResentBatchStoredOnce(t *testing.T) {
 	}
 	if got, _ := db.RawAfter(0, 10); len(got) != 4 {
 		t.Fatalf("same seq from another boot must be kept, got %d", len(got))
+	}
+}
+
+// Every connection Open makes reads with snapshot isolation, whatever the
+// server's default (MariaDB before 11.6.2 has it off): concurrent management
+// writes rely on its conflict error to run again (againOnConflict).
+func TestOpenReadsWithSnapshotIsolation(t *testing.T) {
+	// the setting is asked for on every server (11.8 has it on already, so
+	// the session read alone would not show it missing)
+	if cfg, err := connConfig("root@tcp(127.0.0.1:1)/x"); err != nil || cfg.Params["innodb_snapshot_isolation"] != "ON" {
+		t.Fatalf("connection settings: %v %v", cfg, err)
+	}
+	db := testDB(t)
+	// three connections held at once are three distinct connections
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		c, err := db.sql.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		var v string
+		if err := c.QueryRowContext(ctx, `SELECT @@session.innodb_snapshot_isolation`).Scan(&v); err != nil || v != "1" {
+			t.Fatalf("connection %d: innodb_snapshot_isolation %q %v", i, v, err)
+		}
 	}
 }

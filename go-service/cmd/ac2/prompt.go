@@ -12,9 +12,9 @@ func promptHandler(db *store.DB) http.HandlerFunc {
 	return promptEditor(db.CriticPrompt, db.SetCriticPrompt, memory.Instructions)
 }
 
-// publisherPromptHandler edits the narrative guide's rules (user 11-09); the
-// level's items and the output shape stay the code's, so a level still asks
-// for its own items.
+// publisherPromptHandler edits the narrative guide's rules; the level's
+// items and the output shape stay the code's, so a level still asks for its
+// own items.
 func publisherPromptHandler(db *store.DB) http.HandlerFunc {
 	return promptEditor(db.PublisherPrompt, db.SetPublisherPrompt, narrGuideHead)
 }

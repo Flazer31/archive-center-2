@@ -32,9 +32,9 @@ import (
 	"archivecenter2/goservice/internal/updateapi"
 )
 
-// releaseRepo is where a released build looks for newer versions (user
-// 2026-11-10: turn the update check on now that releases are on GitHub).
-// Nothing is asked of it until the user presses the update check.
+// releaseRepo is where a released build looks for newer versions (turn
+// the update check on now that releases are on GitHub). Nothing is asked
+// of it until the user presses the update check.
 const releaseRepo = "Flazer31/archive-center-2"
 
 // updateRepoDefault is the update repository when no -update-repo flag is
@@ -123,7 +123,9 @@ func runBackend() int {
 		if err != nil {
 			// DSNs and connection errors can contain credentials. The plugin
 			// gets the same actionable, credential-free readiness message.
-			log.Print(observe.DatabaseHelp)
+			for _, line := range databaseOpenHelp(err) {
+				log.Print(line)
+			}
 		}
 	}
 	if db != nil {
@@ -290,8 +292,8 @@ func runBackend() int {
 	}
 	last4, _ := tok.Info()
 	if made {
-		// shown in plain text this once only, when the token is made (user
-		// decisions 10-27, 10-28): after this only its end is printed
+		// shown in plain text this once only, when the token is made
+		// (10-28): after this only its end is printed
 		log.Printf("새 접속 토큰이 만들어졌습니다. 이 화면에서 한 번만 보여 줍니다. 지금 반드시 복사해 플러그인 설정 → 연결에 넣고, 안전한 곳에 보관하세요:\n\n    %s\n\n(파일: %s)", tok.Value(), tokenPath)
 	} else {
 		log.Printf("access token: %s (ends with %s)", tokenPath, last4)

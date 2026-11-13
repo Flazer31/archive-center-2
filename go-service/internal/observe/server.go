@@ -21,8 +21,8 @@ const (
 
 // Build metadata: release tags/manifests use MachineVersion; the UI uses the
 // display name. Both may be supplied by the release build with -ldflags -X.
-var ServiceVersion = "1.0.0"
-var MachineVersion = "1.0.0"
+var ServiceVersion = "1.1.0"
+var MachineVersion = "1.1.0"
 
 // Stable error codes returned to the plugin.
 const (
@@ -137,9 +137,9 @@ func (s *Server) routes() *http.ServeMux {
 }
 
 // cors lets the sandboxed plugin call the service. Every request carries
-// the access token (user decision 10-27, replacing the 10-22 decision of
-// no token); where the service listens (loopback by default, a Tailscale
-// IP, or all addresses) is set separately.
+// the access token; where the
+// service listens (loopback by default, a Tailscale IP, or all
+// addresses) is set separately.
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

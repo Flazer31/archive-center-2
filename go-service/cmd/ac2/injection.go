@@ -44,7 +44,7 @@ func (s *status) injectionHandler() http.HandlerFunc {
 				if page != nil {
 					t := page.Summary
 					in = &injection{DeliveryID: page.ID, At: page.At, Chat: chat, Items: len(t.IDs), Chars: t.Chars, CharsMax: t.CharsMax, SecretChars: t.SecretChars, SecretMax: t.SecretMax,
-						Ranked: t.Ranked, RecentQueryUsed: t.RecentQueryUsed, Warning: t.Warning, TotalMS: t.TotalMS, Block: page.Block, Memories: t.Memories}
+						Ranked: t.Ranked, RecentQueryUsed: t.RecentQueryUsed, Warning: t.Warning, TotalMS: t.TotalMS, Stages: t.Stages, Prefix: t.Prefix, Block: page.Block, Memories: t.Memories}
 					if in.Memories == nil {
 						in.Memories = []store.InjectedMemory{}
 					}

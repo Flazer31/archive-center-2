@@ -51,16 +51,15 @@ func (d *DB) sceneContrast(k memory.Known, req DeliveryRequest) (map[string]floa
 					return err
 				}
 				if len(data) != dim*4 {
-					rows.Close()
-					return fmt.Errorf("vector dimension mismatch")
+					continue // a stored vector of another size is not compared (as in similarities)
 				}
 				var length float64
 				for i := range vector {
 					vector[i] = float64(math.Float32frombits(binary.LittleEndian.Uint32(data[4*i:])))
 					length += vector[i] * vector[i]
 				}
-				if length == 0 {
-					continue
+				if length == 0 || math.IsNaN(length) || math.IsInf(length, 0) {
+					continue // nor a zero or non-finite one: the others keep their contrast
 				}
 				length = math.Sqrt(length)
 				for i := range vector {

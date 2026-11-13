@@ -131,8 +131,19 @@ func TestRerollAcrossRestartReplaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Apply(lsnap(lifecycle.SourceOutputEvent, lrow("u1", "user", "", "q"), lrow("a2", "char", "g2", "second")))
-	if st := r.Turns[0].Responses[0].State; st != lifecycle.Replaced {
-		t.Fatalf("old reply after restart: %s", st)
+	// the deleted reply waiting for its replacement is still known after the
+	// restart: the new reply replaces it on the same turn, and only the
+	// newest value is kept, also in the database
+	old := r.Turns[0].Responses[0]
+	if len(r.ActiveTurns()) != 1 || old.State != lifecycle.Replaced || len(old.Revisions) != 1 || old.Revisions[0].Data != "" {
+		t.Fatalf("old reply after restart: %+v", old)
+	}
+	if err := db.SaveSession(r, r.TakeEvents(), r.TakeRenames()); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := db.sql.QueryRow(`SELECT COUNT(*) FROM revisions WHERE session_key='chat:A' AND row_key='c:a1' AND data<>''`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("the replaced reply's text is still stored: %d %v", n, err)
 	}
 }
 

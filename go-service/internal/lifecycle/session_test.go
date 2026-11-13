@@ -6,8 +6,8 @@ import (
 )
 
 // Snapshots are built in the shape RisuAI stores chats (Message.chatId,
-// role, data, generationInfo.generationId). Live-host recording is pending
-// (STEP1-TEST-LOG.md), so these are source-shaped sequences, not recordings.
+// role, data, generationInfo.generationId). Live-host recording is pending,
+// so these are source-shaped sequences, not recordings.
 
 func u(id, data string) Row      { return Row{ChatID: id, Role: "user", Data: data} }
 func c(id, gen, data string) Row { return Row{ChatID: id, Role: "char", GenerationID: gen, Data: data} }
@@ -76,8 +76,11 @@ func TestRerollSameRowReplaces(t *testing.T) {
 	if got := activeTexts(turns[0]); len(got) != 1 || got[0] != "second" {
 		t.Fatalf("reroll must replace, active = %v", got)
 	}
-	if turns[0].Responses[0].State != Replaced {
-		t.Fatalf("old response must be kept as replaced, got %s", turns[0].Responses[0].State)
+	// only the newest reply value is kept: the replaced row is an empty
+	// marker on its turn (its text gone, its text number kept)
+	old := s.respRow["c:a1"]
+	if old == nil || old.State != Replaced || s.respTurn["c:a1"] != turns[0] || len(old.Revisions) != 1 || old.Revisions[0].Data != "" || old.Revisions[0].Seq != 1 {
+		t.Fatalf("the replaced reply must be an empty marker: %+v", old)
 	}
 }
 
@@ -139,10 +142,10 @@ func TestFirstMemberDeletedKeepsTurn(t *testing.T) {
 
 // RisuAI's /cut and /del take the front of a chat away to save browser
 // memory: rows gone from the front while later rows stay keep their text and
-// turns (user 11-08), at a turn boundary or inside a turn, and stay kept as
-// the chat goes on. A screen delete after the front (one message, or a
-// message and all after it) still deletes; a chat whose every known row is
-// gone has no front.
+// turns, at a turn boundary or inside a turn, and stay kept as the chat goes
+// on. A screen delete after the front (one message, or a message and all
+// after it) still deletes; a chat whose every known row is gone has no
+// front.
 func TestFrontCutKeepsRows(t *testing.T) {
 	full := []Row{u("u1", "a"), c("a1", "g1", "r1"), u("u2", "b"), c("a2", "g2", "r2"), u("u3", "c"), c("a3", "g3", "r3")}
 	for name, keep := range map[string][]Row{
@@ -201,14 +204,15 @@ func TestTailDeleteDeactivatesTurn(t *testing.T) {
 }
 
 // Choosing a stored reroll candidate or editing changes the body of the same
-// row (same generation id): kept as a new revision of the same response.
+// row (same generation id): the same response, its text overwritten by the
+// newest (only the newest value is kept).
 func TestSameRowBodyChangeIsRevision(t *testing.T) {
 	s := NewSession("chat-1")
 	s.Apply(snap(SourceOutputEvent, u("u1", "a"), c("a1", "g1", "v1")))
 	s.Apply(snap(SourceBeforeRequest, u("u1", "a"), c("a1", "g1", "v2")))
 	r := mustTurns(t, s, 1)[0].Responses[0]
-	if len(r.Revisions) != 2 || r.Revisions[1].Data != "v2" || r.State != Active {
-		t.Fatalf("revision not recorded: %+v", r)
+	if len(r.Revisions) != 1 || r.Revisions[0].Data != "v2" || r.Revisions[0].Seq != 2 || r.State != Active {
+		t.Fatalf("the newest text must replace the earlier one: %+v", r)
 	}
 }
 
@@ -285,7 +289,7 @@ func TestOutputAndRetryDoNotConfirm(t *testing.T) {
 	}
 }
 
-// ---- Astra 15 review counterexamples (ASTRA-STEP2-CORE-15.md F1-F6), kept as regressions ----
+// ---- counterexamples, kept as regressions ----
 func TestAstra15MissingIDEditKeepsLogicalID(t *testing.T) {
 	s := NewSession("chat-1")
 	s.Apply(snap(SourceOutputEvent, u("", "first"), c("a1", "g1", "reply")))
@@ -427,19 +431,22 @@ func TestUnreadableRowIsPresent(t *testing.T) {
 	}
 }
 
-// Editing the confirmed body (same generation) keeps the completion and
-// records a revision; only a new generation clears it.
+// Editing the confirmed body (same generation) keeps the completion; the
+// edited text replaces the earlier one; only a new generation clears the
+// completion.
 func TestSameGenerationEditKeepsConfirmation(t *testing.T) {
 	s := NewSession("chat-1")
 	s.Apply(snap(SourceOutputEvent, u("u1", "a"), c("a1", "g1", "v1")))
 	goOn(s, u("u1", "a"), c("a1", "g1", "v1"))
 	s.Apply(snap(SourceBeforeRequest, u("u1", "a"), c("a1", "g1", "v1 edited")))
 	tr := mustTurns(t, s, 1)[0]
-	if !tr.Confirmed || len(tr.Responses[0].Revisions) != 2 {
+	if revs := tr.Responses[0].Revisions; !tr.Confirmed || len(revs) != 1 || revs[0].Data != "v1 edited" {
 		t.Fatalf("edit of confirmed body: confirmed=%v revisions=%d", tr.Confirmed, len(tr.Responses[0].Revisions))
 	}
-	if !tr.Responses[0].Revisions[0].Confirmed || tr.Responses[0].Revisions[1].Confirmed {
-		t.Fatalf("confirmed flag must stay on the body that was confirmed")
+	// the edited text was not the body that was confirmed; the turn stays
+	// confirmed (its memory comes from what the user went on from)
+	if tr.Responses[0].Revisions[0].Confirmed {
+		t.Fatalf("the edited text must not be marked as the confirmed body")
 	}
 }
 
@@ -482,15 +489,15 @@ func TestNewUnreadableRowLinkedThenRevised(t *testing.T) {
 	}
 }
 
-// The same body under a new generation id is a new generation: recorded,
-// and not covered by the earlier completion.
+// The same body under a new generation id is a new generation: recorded (in
+// place of the earlier text), and not covered by the earlier completion.
 func TestSameBodyNewGenerationIsRecorded(t *testing.T) {
 	s := NewSession("chat-1")
 	s.Apply(snap(SourceOutputEvent, u("u1", "a"), c("a1", "g1", "same")))
 	goOn(s, u("u1", "a"), c("a1", "g1", "same"))
 	s.Apply(snap(SourceBeforeRequest, u("u1", "a"), c("a1", "g2", "same")))
 	tr := mustTurns(t, s, 1)[0]
-	if len(tr.Responses[0].Revisions) != 2 || tr.Responses[0].Revisions[1].GenerationID != "g2" || tr.Confirmed {
+	if len(tr.Responses[0].Revisions) != 1 || tr.Responses[0].Revisions[0].GenerationID != "g2" || tr.Confirmed {
 		t.Fatalf("revisions %+v confirmed %v", tr.Responses[0].Revisions, tr.Confirmed)
 	}
 }
@@ -518,7 +525,9 @@ func TestRestoreContinuesIDsAndLinks(t *testing.T) {
 }
 
 // RisuAI reroll removes the old reply before the request: the old row is
-// seen deleted first, then the new reply replaces it on the same turn.
+// seen deleted first (kept until the new reply comes, so a plain delete
+// stays a delete), then the new reply replaces it on the same turn and the
+// old row is forgotten.
 func TestRerollDeleteFirstThenNewReplyReplaces(t *testing.T) {
 	s := NewSession("chat-1")
 	s.Apply(snap(SourceOutputEvent, u("u1", "a"), c("a1", "g1", "r1")))
@@ -529,8 +538,9 @@ func TestRerollDeleteFirstThenNewReplyReplaces(t *testing.T) {
 	}
 	s.Apply(snap(SourceOutputEvent, u("u1", "a"), c("a2", "g2", "r2")))
 	got := mustTurns(t, s, 1)[0]
-	if got.ID != id || s.respRow["c:a1"].State != Replaced || activeTexts(got)[0] != "r2" {
-		t.Fatalf("id %d->%d, old %s, active %v", id, got.ID, s.respRow["c:a1"].State, activeTexts(got))
+	old := s.respRow["c:a1"]
+	if got.ID != id || old == nil || old.State != Replaced || len(old.Revisions) != 1 || old.Revisions[0].Data != "" || activeTexts(got)[0] != "r2" {
+		t.Fatalf("id %d->%d, old %+v, active %v", id, got.ID, old, activeTexts(got))
 	}
 }
 
@@ -546,7 +556,7 @@ func TestNewPartBesideActiveKeepsDeletedPart(t *testing.T) {
 	}
 }
 
-// ---- Astra 16 recheck counterexamples (ASTRA-RECHECK-16.md R1, R2, N1-N3), kept as regressions ----
+// ---- recheck counterexamples, kept as regressions ----
 func TestAstra16NoIDEditWithNewIdentifiedResponse(t *testing.T) {
 	s := NewSession("chat-1")
 	s.Apply(snap(SourceOutputEvent, u("", "before"), c("a1", "g1", "reply")))
@@ -677,7 +687,7 @@ func TestRepeatedSnapshotsDoNotRepeatNotes(t *testing.T) {
 	}
 }
 
-// ---- Astra 17 recheck counterexamples (ASTRA-RECHECK-17.md), kept as regressions ----
+// ---- recheck counterexamples (2), kept as regressions ----
 func TestAstra17LoadEditThenAssignIDKeepsTurn(t *testing.T) {
 	s := NewSession("chat-1")
 	s.Apply(snap(SourceLoad, Row{Role: "user", Time: 5, Data: "before"}, c("a1", "g1", "reply")))
@@ -745,7 +755,7 @@ func TestAstra17MiddleUserDeletionAndRerollOwner(t *testing.T) {
 	}
 }
 
-// ---- Astra 18 recheck counterexamples (ASTRA-RECHECK-18.md), kept as regressions ----
+// ---- recheck counterexamples (3), kept as regressions ----
 func a18snap(rows ...Row) Snapshot {
 	for i := range rows {
 		rows[i].Index = i
@@ -810,10 +820,10 @@ func TestFirstRowEditIsNotAFrontCut(t *testing.T) {
 	}
 }
 
-// After a front cut (review 21): an edit of a remaining row without chatId
-// is continued by its own turn, not by the cut one; a new row with the text
-// of a cut row without chatId is a new turn; a cut row stays cut when every
-// remaining row changes later (it is no longer on the screen to delete).
+// After a front cut: an edit of a remaining row without chatId is continued
+// by its own turn, not by the cut one; a new row with the text of a cut row
+// without chatId is a new turn; a cut row stays cut when every remaining
+// row changes later (it is no longer on the screen to delete).
 func TestFrontCutLaterSnapshots(t *testing.T) {
 	s := NewSession("chat-1")
 	u2 := Row{Role: "user", Time: 20, Data: "second input"}
@@ -841,9 +851,9 @@ func TestFrontCutLaterSnapshots(t *testing.T) {
 }
 
 // The first turn's reply deleted and its input (without chatId) edited,
-// then regenerated, with a later turn still there (review 21/22 A-4): the
-// edited input stays on the first turn and replaces its old input; the
-// later turn keeps its own rows.
+// then regenerated, with a later turn still there: the edited input stays
+// on the first turn and replaces its old input; the later turn keeps its
+// own rows.
 func TestEditWithoutChatIDBeforeALaterTurn(t *testing.T) {
 	s := NewSession("chat-1")
 	oldUser := Row{Role: "user", Time: 10, Data: "old input"}
@@ -869,9 +879,9 @@ func TestEditWithoutChatIDBeforeALaterTurn(t *testing.T) {
 	}
 }
 
-// Review 23: two edited inputs of one turn move to that turn together, never
-// further back into a turn cut away in the same snapshot; an edit that got
-// a chatId on the way is still an edit of its own turn.
+// Two edited inputs of one turn move to that turn together, never further
+// back into a turn cut away in the same snapshot; an edit that got a chatId
+// on the way is still an edit of its own turn.
 func TestEditOfSeveralInputsAndAssignedID(t *testing.T) {
 	s := NewSession("chat-1")
 	a := Row{Role: "user", Time: 20, Data: "input A"}

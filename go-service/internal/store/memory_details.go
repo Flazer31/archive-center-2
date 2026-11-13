@@ -18,7 +18,7 @@ func listedNameRefs(m memory.Memory) []string {
 		}
 	}
 	if m.Basis != nil {
-		refs = append(refs, m.Basis.From)
+		refs = append(refs, memory.SourceParts(m.Basis.From)...)
 	}
 	for _, e := range m.Effects {
 		refs = append(refs, e.About)
@@ -64,7 +64,7 @@ func listedMemory(m memory.Memory, name func(string) string) ListedMemory {
 	}
 	// whom the by-person view files it under (C14), from the stored
 	// reference: a fact's about, a view's owner; a record (M12) is nobody,
-	// whatever a name may look like (review 13 #2)
+	// whatever a name may look like
 	if ref := m.About; m.Kind == "fact" || m.Kind == "view" {
 		if m.Kind == "view" {
 			ref = m.Owner
@@ -80,7 +80,7 @@ func listedMemory(m memory.Memory, name func(string) string) ListedMemory {
 	}
 	if m.Basis != nil {
 		b := *m.Basis
-		b.From = name(b.From)
+		b.From = memory.MapSource(b.From, name)
 		v.Basis = &b
 	}
 	for _, e := range m.Effects {

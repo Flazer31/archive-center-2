@@ -56,12 +56,12 @@ func (d *a30Store) KeepUnreadable(j store.Job, m, r, i, a string, n []string, at
 }
 func (d *a30Store) SessionKeys() ([]string, error)  { return nil, nil }
 func (d *a30Store) RearmFailedJobs() (int64, error) { return 0, nil }
-func (d *a30Store) Grant(s string, turns []int) error {
+func (d *a30Store) Grant(s string, srcs []memory.Source) error {
 	if d.grants[s] == nil {
 		d.grants[s] = map[int]bool{}
 	}
-	for _, t := range turns {
-		d.grants[s][t] = true
+	for _, src := range srcs {
+		d.grants[s][src.Turn] = true
 	}
 	return nil
 }
@@ -72,7 +72,10 @@ func (d *a30Store) Grants(s string) (map[int]bool, error) {
 	}
 	return out, nil
 }
-func (d *a30Store) Ungrant(s string, t int) error { delete(d.grants[s], t); return nil }
+func (d *a30Store) Ungrant(s string, src memory.Source) error {
+	delete(d.grants[s], src.Turn)
+	return nil
+}
 func (d *a30Store) DoneKeys(s string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for k, j := range d.jobs {

@@ -2,7 +2,9 @@ package memory
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -24,6 +26,7 @@ Steps:
 
 Rules:
 - elapsed_days: at the top level, write the number of whole story days that passed since the previous turn (0, 1, 2, ...). Count only passage to the current scene, not a recalled or planned event. On the first turn, or when no passage is clear, write 0. This is a turn-level delta, not the chat's cumulative day number.
+- story_date: at the top level, when THIS TURN's text states the story's calendar date for now (year, month and day, in any form or language), write it as yyyy/mm/dd. Leave it empty when the text gives no such date or only a part of it; never compute or guess it. When a STORY DATE is given, leave story_date empty.
 - Use the ids shown in KNOWN exactly. For new items use short temporary ids: n1, n2 for names, m1, m2 for memories, s1 for scenes, l1 for links.
 - Never invent a value (emotion, goal, number, weather, date) that the text does not give. Leave fields out when the text has nothing for them.
 - time: a STORY DATE, when given, is the story date after this turn; use it for what happens now. Otherwise write the date or time the text gives. If the text only says how much time passed ("the next day", "three days later"), count days from the first day of the chat: "day 0", "day 1", ...; if the earlier days are not known, write the words the text uses. A recalled past event keeps its own time, not the current date.
@@ -51,7 +54,7 @@ Rules:
 - about, owner, to and each role entry hold ONE id or name. For several, write several items or list them in roles; a feeling or change the text gives to several people is one view for each of them.
 
 JSON shape (all arrays optional, fields optional unless needed):
-{"elapsed_days":0,"entities":[{"id":"n1","name":"","type":"person|place|thing|group","q":"","same_as":"","how":"alias|disguise|true_name"}],
+{"elapsed_days":0,"story_date":"","entities":[{"id":"n1","name":"","type":"person|place|thing|group","q":"","same_as":"","how":"alias|disguise|true_name"}],
  "memories":[
   {"id":"m1","kind":"event","body":"","q":"","imp":0-10,"roles":{"actor":[],"target":[],"object":[],"place":[],"speaker":[],"listener":[]},"time":"","effects":[{"about":"","slot":"","before":"","value":"","delta":"","was":"","status":""}],"outcome":"attempt|success|partial|failed|interrupted|cancelled","setting":"","seen_by":[],"differs":"yes|no|unknown"},
   {"id":"m2","kind":"fact","about":"","slot":"","mode":"","body":"","q":"","to":"","scope":"","terms":"","status":"","at":"","was":""},
@@ -87,6 +90,7 @@ func RenderKnown(sel Selection, superseded map[string]bool) string {
 		if n.Q != "" {
 			fmt.Fprintf(&b, " %q", n.Q)
 		}
+		field("body", n.Body)
 		b.WriteString("\n")
 	}
 	for _, r := range sel.Relations {
@@ -278,17 +282,66 @@ func DateText(dates map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
+var shownDate = regexp.MustCompile(`^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::\d{2})?)?$`)
+
+// DateShown writes a turn's stored date for a delivered line
+// (yyyy/mm/dd): each date as year/month/day (the year as written, a time
+// kept as HH:MM), without the variable's name; names stay only when the
+// chat's date variables hold different dates (each would be unclear
+// alone). Text that is no date ("Day 3") stays as it is.
+func DateShown(text string) string {
+	if text == "" || !strings.Contains(text, " = ") {
+		return text
+	}
+	type pair struct{ name, date string }
+	var pairs []pair
+	distinct := map[string]bool{}
+	for _, part := range strings.Split(text, "; ") {
+		name, value, ok := strings.Cut(part, " = ")
+		if !ok {
+			return text
+		}
+		date := value
+		if m := shownDate.FindStringSubmatch(strings.TrimSpace(value)); m != nil {
+			mo, _ := strconv.Atoi(m[2])
+			d, _ := strconv.Atoi(m[3])
+			date = fmt.Sprintf("%s/%02d/%02d", m[1], mo, d)
+			if m[4] != "" {
+				h, _ := strconv.Atoi(m[4])
+				date += fmt.Sprintf(" %02d:%s", h, m[5])
+			}
+		}
+		pairs = append(pairs, pair{name, date})
+		distinct[date] = true
+	}
+	if len(distinct) == 1 {
+		return pairs[0].date
+	}
+	parts := make([]string, len(pairs))
+	for i, p := range pairs {
+		parts[i] = p.name + " " + p.date
+	}
+	return strings.Join(parts, "; ")
+}
+
 // BodyRules is added to the critic's instructions only while body tracking
 // is on (1.0 E09/E10, AC1's body_events rules): the model records body facts
 // the text states and never calculates or guesses them.
 const BodyRules = `
 Body facts (only what THIS TURN's text states; write nothing otherwise):
-At the top level you may add "body_events":[{"kind":"","who":"","when":"","scope":"","visibility":"","partners":[],"exposure":{"classification":"","partner_compatibility":"","contraception":""},"paternity":{"status":"","candidates":[]},"q":""}].
-- kind is one of period_start, pregnancy_confirmed, pregnancy_ended, recovery_started, recovery_ended, conception_exposure. who is the person's name id (an id from KNOWN or this answer's entities).
+At the top level you may add "body_events":[{"kind":"","who":"","when":"","scope":"","visibility":"","partners":[],"exposure":{"classification":"","partner_compatibility":"","contraception":"","method":""},"paternity":{"status":"","candidates":[],"unaware":[],"learns":[]},"outcome":"","child":"","q":""}].
+- kind is one of period_start, pregnancy_confirmed, pregnancy_ended, recovery_started, recovery_ended, conception_exposure, emergency_contraception, child_named, paternity_learned, profile. who is the person's name id (an id from KNOWN or this answer's entities).
+- profile: a named person's sex and species now, {"kind":"profile","who":"","sex":"female|male|other","species":"","q":""} (no when or scope).
+  Write only what KNOWN's "body" for that person does not show yet, or what THIS TURN corrects; never repeat a value KNOWN shows.
+  sex: she/her/그녀 referring to the person means female, he/him male; a name, clothes or speech style alone does not. species: what the person really is, only a non-human kind the text states (elf, demon, dragon) — never the kind a disguise, a transformation or a cover story shows; empty for a human, but write "human" when THIS TURN shows a kind KNOWN shows was wrong.
 - period_start: a period starts in the text. pregnancy_confirmed: the text establishes a pregnancy. pregnancy_ended: birth, loss or end of a pregnancy. recovery_started / recovery_ended: recovery after it.
-- conception_exposure: an act that could cause pregnancy happens in the text. partners are the other people's name ids. exposure.classification is potentially_conceiving, not_potentially_conceiving or unknown; partner_compatibility is compatible, incompatible or unknown; contraception is none, present or unknown — write unknown when the text does not say.
-- pregnancy_confirmed may give paternity: status confirmed only when the story establishes the parent (not marriage, suspicion or closeness); candidates otherwise; unknown when none is named.
-- when: the time the text gives for it; leave it empty when it happens in this turn. scope: flashback, planned or hypothetical when it is not happening now; leave it empty otherwise.
+- conception_exposure: an act that could cause pregnancy happens in the text. partners are the other people's name ids. exposure.classification is potentially_conceiving, not_potentially_conceiving or unknown; partner_compatibility is compatible, incompatible or unknown — write unknown when the text does not say; contraception is present only when the text says it is used, else none; with present, exposure.method is condom, pill, withdrawal, iud, implant, injection, patch (a patch or a vaginal ring), magic (a spell, potion or other magical or supernatural way the story has) or other, empty when the text does not say which.
+- emergency_contraception: the person takes emergency contraception (a morning-after pill) in the text.
+- pregnancy_ended gives outcome: birth when the text tells a birth, loss when it tells a miscarriage, stillbirth or other loss, unknown when it does not say. With a birth, child is the child's name id when the text names the child, and paternity as below when the text says who the father is at the birth.
+- pregnancy_confirmed gives paternity whenever the text says or shows who the father is or may be (a memory item about the father does not replace it; write it here too): candidates the father's name id (or the possible fathers' ids); status confirmed only when the story establishes the parent (not marriage, suspicion or closeness), candidates otherwise; unknown when none is named. paternity.unaware: the people the text shows not knowing who the father is (the mother too, when she does not know or believes another man is); leave it empty otherwise.
+- child_named: a child she bore earlier is named in the text: who is the mother, child the child's name id, when the day that child was born (as KNOWN or the text gives it).
+- paternity_learned: someone learns who the father of her pregnancy or child is (also long after the birth; write it as well as any memory item about it): who is the mother, child the child when it is a child already born, paternity.learns the people who learn it, paternity.status and candidates when the text says who the father is, and paternity.unaware the people the text shows still not knowing.
+- when: only a calendar date (YYYY/MM/DD) the text gives, or how many days before or after this turn it happens ("3 days before", "2 days after"); leave it empty when it happens in this turn or the text gives neither. Never copy a day number the story uses ("day 100"). scope: flashback, planned or hypothetical when it is not happening now; leave it empty otherwise.
 - visibility: public when other people in the scene openly know it, else private. A body fact never means anyone knows it.
 - Never write probabilities, cycle days or due dates. Do not infer a pregnancy or a period from a delay, desire, mood or repetition. Do not invent symptoms or a birth.
 - q is a short exact quote from THIS TURN.`

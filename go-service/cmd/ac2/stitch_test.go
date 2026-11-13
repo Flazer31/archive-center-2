@@ -124,9 +124,9 @@ func TestStitchStoredChatsInOrder(t *testing.T) {
 	}
 }
 
-// Cross-review 11 R01: a stitched chat that already reads another stitched
-// chat as its past carries that chat's turns too; each turn is read once,
-// where it first comes, so the story numbers and days are not repeated.
+// A stitched chat that already reads another stitched chat as its past
+// carries that chat's turns too; each turn is read once, where it first
+// comes, so the story numbers and days are not repeated.
 func TestStitchOverlapReadsEachTurnOnce(t *testing.T) {
 	db := modelsDB(t)
 	pipe := pipeline.New(db)

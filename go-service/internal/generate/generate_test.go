@@ -436,8 +436,9 @@ func TestReceivedAnswerIsStoredWithoutCallingAgain(t *testing.T) {
 	if _, err := Turn(context.Background(), st, m, "fake", nil, src); err == nil {
 		t.Fatal("the failed store was not reported")
 	}
-	if j, _ := db.JobFor(src); j.State != "received" || j.Response == "" || m.calls() != 1 {
-		t.Fatalf("after the failed store: job %+v calls %d", j, m.calls())
+	before, _ := db.JobFor(src)
+	if before.State != "received" || before.Response == "" || m.calls() != 1 || before.Attempts != 1 {
+		t.Fatalf("after the failed store: job %+v calls %d", before, m.calls())
 	}
 	r, err := Turn(context.Background(), st, m, "fake", nil, src)
 	if err != nil || !r.Reused || m.calls() != 1 {
@@ -449,7 +450,11 @@ func TestReceivedAnswerIsStoredWithoutCallingAgain(t *testing.T) {
 	if got := bodies(t, db, s); len(got[1]) != 1 || got[1][0] != "첫째 기록" {
 		t.Fatalf("stored %v", got)
 	}
+	// storing the kept answer is no model call: the calls counted stay
 	j, _ := db.JobFor(src)
+	if j.Attempts != before.Attempts {
+		t.Fatalf("attempts %d, before the reuse %d", j.Attempts, before.Attempts)
+	}
 	ids, err := db.ItemIDs(j.ID)
 	if err != nil || len(ids) != 1 || !strings.HasPrefix(ids["memories/0"], "M") {
 		t.Fatalf("item ids %v %v", ids, err)
@@ -512,7 +517,7 @@ func (s *writesFailOnce) SaveGeneration(j store.Job, g store.Generation) ([]stri
 
 // When keeping the answer and storing it both fail, the worker holds the
 // answer it received and stores it on the next run without calling the
-// model again (ASTRA-RECHECK-44 §2-2); the failure notes are reported.
+// model again; the failure notes are reported.
 func TestWorkerHoldsAnAnswerWhoseStoresFailed(t *testing.T) {
 	db := testDB(t)
 	st := &writesFailOnce{DB: db}
@@ -630,7 +635,7 @@ func waitFor(t *testing.T, cond func() bool) bool {
 }
 
 // The last allowed call answers but storing fails: the answer is stored
-// later without a notice and without another call (ASTRA-RECHECK-45 §2-1).
+// later without a notice and without another call.
 func TestLastCallsAnswerIsStoredWithoutANotice(t *testing.T) {
 	db := testDB(t)
 	shortWaits(t, 100*time.Millisecond)
@@ -648,7 +653,7 @@ func TestLastCallsAnswerIsStoredWithoutANotice(t *testing.T) {
 }
 
 // After a reroll replaced a failed reply, the old reply's wait does not call
-// the model for it again (ASTRA-RECHECK-45 §2-2).
+// the model for it again.
 func TestRerollDropsTheOldReplysRetry(t *testing.T) {
 	db := testDB(t)
 	shortWaits(t, 150*time.Millisecond)
@@ -708,8 +713,8 @@ func (s *doneKeysFailsOnce) DoneKeys(session string) (map[string]bool, error) {
 	return s.DB.DoneKeys(session)
 }
 
-// A read error when a chat runs keeps it waiting to run again
-// (ASTRA-RECHECK-45 §2-3).
+// A read error when a chat runs keeps it waiting to run
+// again.
 func TestReadErrorKeepsTheChatWaiting(t *testing.T) {
 	db := testDB(t)
 	shortWaits(t, 100*time.Millisecond)
@@ -738,7 +743,7 @@ func (f *slowFail) Chat(ctx context.Context, prompt string) (provider.Result, er
 }
 
 // The wait counts from the failure, not from the call's start; with calls
-// used up the turn is reported as given up at once (ASTRA-RECHECK-45 §3).
+// used up the turn is reported as given up at once.
 func TestWaitCountsFromTheFailure(t *testing.T) {
 	db := testDB(t)
 	shortWaits(t, 400*time.Millisecond)
@@ -948,7 +953,7 @@ func oneTurn() *lifecycle.Session {
 
 // A database error before the first call (no call counted yet) does not
 // stop the worker; the turn is made later without a notice
-// (ASTRA-RECHECK-46 §2-1: RetryDelay(0) used to panic).
+// (RetryDelay(0) used to panic).
 func TestErrorBeforeTheFirstCallIsRetried(t *testing.T) {
 	db := testDB(t)
 	shortWaits(t, 100*time.Millisecond)
@@ -1086,8 +1091,8 @@ func TestAskedHistoryIsMadeAfterARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	runFor(t, w2)
-	// the grant is released after the memories are stored (review 09), so wait
-	// for both before checking them
+	// the grant is released after the memories are stored, so wait for both
+	// before checking them
 	if !waitFor(t, func() bool { g, _ := db.Grants(s.Key); return len(bodies(t, db, s)) == 2 && len(g) == 0 }) {
 		g, _ := db.Grants(s.Key)
 		t.Fatalf("made %v grants left %v", bodies(t, db, s), g)
@@ -1187,16 +1192,16 @@ type ungrantFailsOnce struct {
 	failed bool
 }
 
-func (s *ungrantFailsOnce) Ungrant(session string, turn int) error {
+func (s *ungrantFailsOnce) Ungrant(session string, src memory.Source) error {
 	if !s.failed {
 		s.failed = true
 		return errors.New("database down")
 	}
-	return s.DB.Ungrant(session, turn)
+	return s.DB.Ungrant(session, src)
 }
 
 // A grant whose turn is already made is dropped on the next run, without a
-// new call (ASTRA-RECHECK-47 §3-3).
+// new call.
 func TestGrantOfAMadeTurnIsDropped(t *testing.T) {
 	db := testDB(t)
 	s := history(t, db)
@@ -1317,7 +1322,7 @@ func TestGenerationReadsFinalOutput(t *testing.T) {
 }
 
 // Generation reads a reply without the model's reasoning envelope; the
-// stored reply keeps it (user 10-29).
+// stored reply keeps it.
 func TestGenerationIgnoresReasoning(t *testing.T) {
 	db := testDB(t)
 	m := &fakeModel{}
@@ -1340,6 +1345,41 @@ func TestGenerationIgnoresReasoning(t *testing.T) {
 		t.Fatalf("memory %v", got)
 	}
 	src := memory.SourceOf("chat:R", s.ActiveTurns()[0])
+	if len(src.Responses) != 1 || src.Responses[0].Data != reply {
+		t.Fatalf("stored reply changed: %+v", src.Responses)
+	}
+}
+
+// The critic reads a reply without the markup a card or another plugin put
+// in it (an illustration plugin wraps the prose in HTML): the words stay,
+// the tags and style blocks go; the stored reply keeps it all.
+func TestGenerationReadsWithoutMarkup(t *testing.T) {
+	db := testDB(t)
+	m := &fakeModel{}
+	w := NewWorker(db, m, "fake", time.Minute)
+	s := lifecycle.NewSession("chat:H")
+	reply := "문이 열렸다.\n<div class=\"am-illustration-projection\" data-am-message-id=\"x1\"><style>.a{color:red}</style><span style=\"display:block\">검은 정장의 <b>소녀</b>가 서 있었다.</span></div>\n그녀가 웃었다 &amp; 인사했다."
+	s.Apply(snap(lifecycle.SourceOutputEvent, row("u1", "user", "", "입력"), row("a1", "char", "g1", reply)))
+	goOn(s, row("u1", "user", "", "입력"), row("a1", "char", "g1", reply))
+	run(w, s)
+	if m.calls() != 1 {
+		t.Fatalf("calls %d", m.calls())
+	}
+	m.mu.Lock()
+	prompt := m.prompts[0]
+	m.mu.Unlock()
+	turn := prompt[strings.Index(prompt, "THIS TURN"):]
+	for _, gone := range []string{"<div", "<span", "<b>", "am-illustration", "color:red", "&amp;"} {
+		if strings.Contains(turn, gone) {
+			t.Fatalf("the critic read markup %q: %q", gone, turn)
+		}
+	}
+	for _, kept := range []string{"문이 열렸다.", "검은 정장의 소녀가 서 있었다.", "그녀가 웃었다 & 인사했다."} {
+		if !strings.Contains(turn, kept) {
+			t.Fatalf("the critic lost %q: %q", kept, turn)
+		}
+	}
+	src := memory.SourceOf("chat:H", s.ActiveTurns()[0])
 	if len(src.Responses) != 1 || src.Responses[0].Data != reply {
 		t.Fatalf("stored reply changed: %+v", src.Responses)
 	}

@@ -43,7 +43,7 @@ func run(args []string) int {
 			}
 			stderr = book.err
 			previous := log.Writer()
-			// one record per log call, as the backend writes (review 04)
+			// one record per log call, as the backend writes
 			log.SetOutput(diagnostics.IndentedLog(stderr))
 			defer log.SetOutput(previous)
 		}

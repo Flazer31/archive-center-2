@@ -353,8 +353,8 @@ func TestSalvageReadsAKeyMissingItsClosingQuote(t *testing.T) {
 }
 
 // The same words inside a string value are not an array key, also when a
-// response is salvaged (ASTRA-RECHECK-43 cases): the items stay where they
-// are and a complete response is not replaced by a cut-off tail.
+// response is salvaged: the items stay where they are and a complete
+// response is not replaced by a cut-off tail.
 func TestArrayKeyWordsInsideAStringAreNotKeys(t *testing.T) {
 	for _, name := range []string{"entities", "memories", "scenes", "links"} {
 		raw := `{"memories":[{"id":"m1","kind":"fact","body":"본문에 \"` + name + `:[ 예시"},{"id":"m2","kind":"fact","body":"뒤의 정상 항목"}],"scenes":3}`

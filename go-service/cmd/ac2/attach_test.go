@@ -59,10 +59,10 @@ func attPastRows(t *testing.T, _ *store.DB, key string) int {
 	return n
 }
 
-// C22 (user decision 11-06 "연결 기록 추가"): a stored chat attached to a
-// chat is read before the chat's own turns, survives a restart, and is not
-// a host observation — the five request-identity cases replace and append
-// as without it, and deleting the host's rows never deletes the past.
+// C22: a stored chat attached to a chat is read before the chat's own
+// turns, survives a restart, and is not a host observation — the five
+// request-identity cases replace and append as without it, and deleting
+// the host's rows never deletes the past.
 func TestAttachStoredChatAsPast(t *testing.T) {
 	db := modelsDB(t)
 	pipe := pipeline.New(db)

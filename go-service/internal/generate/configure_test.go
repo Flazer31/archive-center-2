@@ -183,8 +183,8 @@ func TestOffMidRunKeepsTurnsWaiting(t *testing.T) {
 	}
 }
 
-// pauseStart holds the first StartAttempt until gate closes: the old
-// critic is taken and its attempt not yet counted (SOL-REVIEW-STEP9-03 F02).
+// pauseStart holds the first StartAttempt until gate closes: the old critic
+// is taken and its attempt not yet counted.
 type pauseStart struct {
 	*store.DB
 	once    sync.Once
@@ -264,7 +264,7 @@ func (f *failRearm) count() int {
 }
 
 // A rearm whose reset fails is tried again after a wait, without another
-// save (SOL-REVIEW-STEP9-04 R04).
+// save.
 func TestFailedRearmIsTriedAgain(t *testing.T) {
 	db := testDB(t)
 	shortWaits(t, 50*time.Millisecond)
@@ -284,8 +284,7 @@ func TestFailedRearmIsTriedAgain(t *testing.T) {
 }
 
 // Another critic saved while the first of two turns is starting: each turn
-// gets the new critic's calls once (retries 0), not the later turn twice
-// (SOL-REVIEW-STEP9-04 R05).
+// gets the new critic's calls once (retries 0), not the later turn twice.
 func TestRearmBeforeTheNextTurn(t *testing.T) {
 	db := testDB(t)
 	shortWaits(t, 50*time.Millisecond)
@@ -400,8 +399,7 @@ func TestCallsCarryTheirChat(t *testing.T) {
 }
 
 // A failed rearm reset waits its time even with a chat waiting to run: the
-// chat would stop for the rearm before its next turn (SOL-REVIEW-STEP9-05
-// F01).
+// chat would stop for the rearm before its next turn.
 func TestFailedRearmWaitsWithAChatWaiting(t *testing.T) {
 	db := testDB(t)
 	shortWaits(t, 400*time.Millisecond)
@@ -477,8 +475,7 @@ func TestIndexAskedDuringAnIndexRunsAgain(t *testing.T) {
 }
 
 // An index asked before the run (an edit) is made even when another turn's
-// generation fails in that run and waits for its retry (SOL-REVIEW-STEP9-06
-// R06-01).
+// generation fails in that run and waits for its retry.
 func TestAskedIndexDoesNotWaitForAFailedTurn(t *testing.T) {
 	db := testDB(t)
 	shortWaits(t, time.Hour) // the failed turn's retry is far away

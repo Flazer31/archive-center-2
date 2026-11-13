@@ -11,10 +11,9 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// GET /chats: the chat list (user decisions 10-28), most recent first. Each
-// chat: its host names (empty until the plugin sends them), turn, memory
-// and name counts, its last observation and, for a branch, the chat and
-// turn it leaves from.
+// GET /chats: the chat list, most recent first. Each chat: its host names
+// (empty until the plugin sends them), turn, memory and name counts, its
+// last observation and, for a branch, the chat and turn it leaves from.
 func chatsHandler(db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

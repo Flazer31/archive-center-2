@@ -7,8 +7,8 @@ import (
 )
 
 // conflictRetries is how often a management write runs again when another
-// write changed the rows it read (full review R4, 11-05: a C16 edit and an
-// unmerge in flight together made the unmerge fail with 1020).
+// write changed the rows it read (11-05: a C16 edit and an unmerge in
+// flight together made the unmerge fail with 1020).
 const conflictRetries = 3
 
 // againOnConflict runs a whole transaction again on MariaDB's "record has

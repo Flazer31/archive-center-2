@@ -39,7 +39,7 @@ type ModelSettings struct {
 const DefaultRetries = 3
 
 // DefaultKnownChars is the ceiling on the whole generation request (chars)
-// before the user changes it. User 11-09 "바꾸고 확인해": with the ceiling on
+// before the user changes it. With the ceiling on
 // the whole request, 50,000 kept all 21 stored scenes under 35,000 actual
 // tokens with 34 of the critic's 41 references still shown (the earlier
 // 40,000 on stored memory alone: 7 scenes over, 35 shown). A value saved

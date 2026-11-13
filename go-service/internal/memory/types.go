@@ -1,5 +1,5 @@
-// Package memory holds the AC2 memory items (generation contract v2,
-// AC2-GEN-ITEMS-V2.md) as the model writes them and as Go stores them.
+// Package memory holds the AC2 memory items (generation contract v2) as the
+// model writes them and as Go stores them.
 //
 // The model writes temporary ids (n1, m1, s1, l1) for new items and refers
 // to stored items by the persistent ids it was shown: names N<n>, memories
@@ -16,17 +16,23 @@ import (
 // Output is one generation response (one confirmed turn).
 type Output struct {
 	ElapsedDays ElapsedDays `json:"elapsed_days"`
-	Entities    []Entity    `json:"entities,omitempty"`
-	Memories    []Memory    `json:"memories,omitempty"`
-	Scenes      []Scene     `json:"scenes,omitempty"`
-	Links       []Link      `json:"links,omitempty"`
+	// StoryDate is the story's date the turn's text states (a date the
+	// backend cannot read is read by the critic); read only when no chat
+	// variable or text date the backend reads gives the turn's date.
+	StoryDate string   `json:"story_date,omitempty"`
+	Entities  []Entity `json:"entities,omitempty"`
+	Memories  []Memory `json:"memories,omitempty"`
+	Scenes    []Scene  `json:"scenes,omitempty"`
+	Links     []Link   `json:"links,omitempty"`
 	// BodyEvents are written only when body tracking is on (1.0 E09/E10).
 	BodyEvents []BodyEvent `json:"body_events,omitempty"`
 }
 
 // BodyEvent is a body fact the turn's text states about a person (AC1
 // body_events): kind is period_start | pregnancy_confirmed |
-// pregnancy_ended | recovery_started | recovery_ended | conception_exposure.
+// pregnancy_ended | recovery_started | recovery_ended | conception_exposure,
+// or profile: the person's established sex and species (1.1, AC1
+// character_deltas appearance gender/species).
 // Who and partners are name ids. When is the time the text gives (empty:
 // this turn); scope is flashback | planned | hypothetical for an event that
 // is not happening now. The model never gives probabilities.
@@ -39,20 +45,36 @@ type BodyEvent struct {
 	Partners   []string       `json:"partners,omitempty"`
 	Exposure   *BodyExposure  `json:"exposure,omitempty"`
 	Paternity  *BodyPaternity `json:"paternity,omitempty"`
-	Q          string         `json:"q,omitempty"`
+	// Outcome of a pregnancy_ended: birth | loss | unknown (1.1: a birth
+	// needs a long recovery)
+	Outcome string `json:"outcome,omitempty"`
+	// Child is the child a birth brings, when the text names it (1.1: the
+	// mother and the father of a child are kept)
+	Child string `json:"child,omitempty"`
+	// Sex (female | male | other) and Species of a profile
+	Sex     string `json:"sex,omitempty"`
+	Species string `json:"species,omitempty"`
+	Q       string `json:"q,omitempty"`
 }
 
 // BodyExposure is how the text describes a conception exposure.
 type BodyExposure struct {
 	Classification string `json:"classification,omitempty"`        // potentially_conceiving | not_potentially_conceiving | unknown
 	Compatibility  string `json:"partner_compatibility,omitempty"` // compatible | incompatible | unknown
-	Contraception  string `json:"contraception,omitempty"`         // none | present | unknown
+	Contraception  string `json:"contraception,omitempty"`         // none | present (unknown, as before 1.1, reads as none)
+	Method         string `json:"method,omitempty"`                // condom | pill | withdrawal | iud | implant | injection | patch | magic | other, when present
 }
 
 // BodyPaternity is the parentage the text establishes for a pregnancy.
 type BodyPaternity struct {
 	Status     string   `json:"status,omitempty"` // confirmed | candidates | unknown
 	Candidates []string `json:"candidates,omitempty"`
+	// Unaware are the people the text shows not knowing who the father is
+	// (the mother herself among them): the father is their secret (1.1)
+	Unaware []string `json:"unaware,omitempty"`
+	// Learns are the people the text shows learning who the father is: the
+	// secret is no longer theirs (1.1)
+	Learns []string `json:"learns,omitempty"`
 }
 
 // ElapsedDays is the critic's turn-level passage of whole story days.
@@ -229,6 +251,30 @@ func (b *Basis) UnmarshalJSON(raw []byte) error {
 	// list dropped the whole basis of two views
 	b.From = strings.Join(v.From, ",")
 	return nil
+}
+
+// SourceParts are the sources a basis names: a list in the response is kept
+// joined ("n1,n2"), and each part is its own reference.
+func SourceParts(from string) []string {
+	var out []string
+	for _, p := range strings.Split(from, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// MapSource applies f to each source of a basis and keeps the text between
+// them as it was.
+func MapSource(from string, f func(string) string) string {
+	parts := strings.Split(from, ",")
+	for i, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			parts[i] = strings.Replace(p, t, f(t), 1)
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 type Affect struct {

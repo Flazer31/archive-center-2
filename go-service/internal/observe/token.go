@@ -17,8 +17,8 @@ import (
 )
 
 // TokenHeader carries the access token on every request. The token is
-// checked on every listen address including loopback (user decision
-// 10-27) unless the user turns the check off (10-28, on by default).
+// checked on every listen address including loopback unless the user
+// turns the check off (10-28, on by default).
 const TokenHeader = "X-AC2-Token"
 
 // Stable error codes for the token check.

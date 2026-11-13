@@ -104,7 +104,7 @@ var schema = []string{
 		KEY by_session (session_key, id)
 	) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`,
 	// rows cut away from the front of the host chat (/cut, /del) are kept;
-	// the mark survives a restart (review 22 A-5)
+	// the mark survives a restart
 	`ALTER TABLE turn_members ADD COLUMN IF NOT EXISTS cut BOOL NOT NULL DEFAULT FALSE`,
 	`ALTER TABLE response_rows ADD COLUMN IF NOT EXISTS cut BOOL NOT NULL DEFAULT FALSE`,
 }

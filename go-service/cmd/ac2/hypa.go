@@ -18,7 +18,7 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// E12 HypaMemory import (AC1's /import/hypamemory; user 11-07: when the
+// E12 HypaMemory import (AC1's /import/hypamemory: when the
 // user presses the button and the chat has HypaMemory summaries, every
 // summary is imported, duplicates or not, and made again into AC2 memory).
 //
@@ -124,7 +124,7 @@ func hypaHandler(pipe *pipeline.Pipeline, worker *generate.Worker, db *store.DB,
 		rows, ids, marks := hypaRows(sums)
 		// the summaries a call is made for: those whose turn has no memory
 		// made from the same rows as now (its reply row and its marks: the
-		// job is named by the turn's texts, review 15 #3)
+		// job is named by the turn's texts)
 		made := map[string]string{} // reply row key -> marks of a made turn
 		if src, ok, err := db.LoadSession(key); err != nil {
 			storeFailed(w, http.StatusInternalServerError, err)
@@ -187,7 +187,7 @@ func hypaHandler(pipe *pipeline.Pipeline, worker *generate.Worker, db *store.DB,
 				}
 				// in the order the summaries came now: a new turn of the
 				// stored chat is added after its others, so its own order
-				// is the order first imported (review 15 #1)
+				// is the order first imported
 				place := map[string]int{}
 				for i, id := range ids {
 					place["c:"+id] = i

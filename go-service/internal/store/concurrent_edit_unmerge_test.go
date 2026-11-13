@@ -1,7 +1,7 @@
 package store
 
-// Full review R4 (11-05): an explicit C16 edit and an unmerge in flight
-// together; the unmerge must not fail with 1020, and the edit must hold.
+// An explicit C16 edit and an unmerge in flight together; the unmerge
+// must not fail with 1020, and the edit must hold.
 
 import (
 	"context"
@@ -58,7 +58,8 @@ func TestConcurrentExplicitEditAndUnmergeBothSucceed(t *testing.T) {
 	}
 	a, b, id := ids["entities/0"], ids["entities/1"], ids["memories/0"]
 	op := c17MergeID(t, db, src.Session, b, a)
-	cfg, e := mysql.ParseDSN(os.Getenv("AC2_TEST_MARIADB_DSN") + "ac2_test_" + t.Name() + "?parseTime=true")
+	// connections as the backend makes them (Open: snapshot isolation)
+	cfg, e := connConfig(os.Getenv("AC2_TEST_MARIADB_DSN") + "ac2_test_" + t.Name() + "?parseTime=true")
 	if e != nil {
 		t.Fatal(e)
 	}

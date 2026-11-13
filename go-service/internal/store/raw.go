@@ -3,12 +3,13 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 
 	"archivecenter2/goservice/internal/ingest"
 	"archivecenter2/goservice/internal/observe"
@@ -16,14 +17,34 @@ import (
 
 type DB struct{ sql *sql.DB }
 
-// Open connects and applies the schema.
+// Open connects and applies the schema. Every connection reads with
+// snapshot isolation (innodb_snapshot_isolation, ON by default from
+// MariaDB 11.6.2): a write to rows another write changed since this
+// transaction read them fails with 1020 and is run again (againOnConflict)
+// instead of overwriting that change; 1.1 serves older servers that have
+// the setting off.
 func Open(dsn string) (*DB, error) {
-	db, err := sql.Open("mysql", dsn)
+	cfg, err := connConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		return nil, err
 	}
 	if err := db.Ping(); err != nil {
 		db.Close()
+		var my *mysql.MySQLError
+		if errors.As(err, &my) && my.Number == 1193 {
+			// no such variable: a server older than the setting
+			plain, perr := sql.Open("mysql", dsn)
+			if perr == nil {
+				var version string
+				plain.QueryRow(`SELECT VERSION()`).Scan(&version)
+				plain.Close()
+				return nil, VersionError{version}
+			}
+		}
 		return nil, err
 	}
 	var version string
@@ -44,17 +65,63 @@ func Open(dsn string) (*DB, error) {
 	return &DB{sql: db}, nil
 }
 
+// connConfig is the connection every backend connection is made with:
+// the DSN given, read with snapshot isolation (see Open).
+func connConfig(dsn string) (*mysql.Config, error) {
+	cfg, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Params == nil {
+		cfg.Params = map[string]string{}
+	}
+	cfg.Params["innodb_snapshot_isolation"] = "ON"
+	return cfg, nil
+}
+
+// MinimumMariaDB names the oldest release of each MariaDB series served:
+// the first with innodb_snapshot_isolation (MariaDB documentation), which
+// also has JSON_TABLE reading a JSON object (10.6.9).
+const MinimumMariaDB = "10.6.18, 10.11.8, 11.4.2"
+
+// snapshotSince is the first patch of each series with
+// innodb_snapshot_isolation (11.5.2: its source declares it; 11.5.1 not
+// checked); 11.6 and later have it.
+var snapshotSince = map[[2]int]int{{10, 6}: 18, {10, 11}: 8, {11, 0}: 6, {11, 1}: 5, {11, 2}: 4, {11, 4}: 2, {11, 5}: 2}
+
+// VersionError is a MariaDB server older than MinimumMariaDB. It holds no
+// credentials, so it may be shown as it is.
+type VersionError struct{ Version string }
+
+func (e VersionError) Error() string {
+	return fmt.Sprintf("MariaDB %s or newer required; actual server version: %q", MinimumMariaDB, e.Version)
+}
+
 func checkMariaDBVersion(version string) error {
 	parts := strings.SplitN(version, ".", 3)
 	if len(parts) >= 2 {
 		major, majorErr := strconv.Atoi(parts[0])
 		minor, minorErr := strconv.Atoi(parts[1])
-		if majorErr == nil && minorErr == nil && (major > 11 || major == 11 && minor >= 8) {
-			return nil
+		patch, patchErr := 0, error(nil) // "X.Y" alone: patch 0
+		if len(parts) == 3 {
+			digits := len(parts[2]) - len(strings.TrimLeft(parts[2], "0123456789"))
+			patch, patchErr = strconv.Atoi(parts[2][:digits])
+		}
+		if majorErr == nil && minorErr == nil && patchErr == nil {
+			if since, ok := snapshotSince[[2]int{major, minor}]; ok && patch >= since {
+				return nil
+			}
+			if major > 11 || major == 11 && minor >= 6 {
+				return nil
+			}
 		}
 	}
-	return fmt.Errorf("MariaDB 11.8 or newer required; actual server version: %q", version)
+	return VersionError{version}
 }
+
+// CheckMariaDBVersion is checkMariaDBVersion for a version read elsewhere
+// (the start file reads the system server's "mariadbd --version").
+func CheckMariaDBVersion(version string) error { return checkMariaDBVersion(version) }
 
 func (d *DB) Close() error { return d.sql.Close() }
 

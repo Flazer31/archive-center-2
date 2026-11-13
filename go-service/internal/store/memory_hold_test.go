@@ -8,12 +8,12 @@ import (
 	"archivecenter2/goservice/internal/memory"
 )
 
-// C18 pin and suppress (user 11-07 "AC2 방식으로 고정·억제"). In deliverChat
-// a query close to the long record delivers it alone: scene contrast takes
-// the short one out. A pinned record is taken first, past Select, ranking
-// and scene contrast, within its lane's ceiling; one the request holds (turn
-// 4) or one a later record replaced is not; a muted record is never
-// delivered, nor shown as a basis; with no flag the block is as before.
+// C18 pin and suppress. In deliverChat a query close to the long record
+// delivers it alone: scene contrast takes the short one out. A pinned record
+// is taken first, past Select, ranking and scene contrast, within its lane's
+// ceiling; one the request holds (turn 4) or one a later record replaced is
+// not; a muted record is never delivered, nor shown as a basis; with no flag
+// the block is as before.
 func TestDeliverPinAndMute(t *testing.T) {
 	db, s, ids := deliverChat(t)
 	scope := memory.ScopeOf(s)
@@ -102,7 +102,20 @@ func TestDeliverPinAndMute(t *testing.T) {
 		t.Fatalf("muted record delivered after an edit: %v", d.IDs)
 	}
 
-	// cleared: the block is as before any flag (the edited body aside)
+	// before the next index only the short record has a vector among the
+	// candidates: the contrast has no reference and the baseline goes (both)
+	hold(ids["long"], "")
+	if d := deliver(q, 2000, 0); len(d.IDs) != 2 || !has(d.IDs, ids["long"]) || !has(d.IDs, ids["short"]) {
+		t.Fatalf("one candidate vector, baseline: %v", d.IDs)
+	}
+	// cleared: the block is as before any flag (the edited body aside). The
+	// edit unlinked its turn's vectors until the next index; link them again
+	// as that index does, so the scene contrast reads the same vectors as
+	// before (11-11 B2: its mean is the candidates, so with one vector left
+	// it has no reference and keeps the baseline)
+	if err := db.SetDocHashes(map[string]string{ids["long"]: TextHash("doc long"), ids["secret"]: TextHash("doc secret")}); err != nil {
+		t.Fatal(err)
+	}
 	hold(ids["long"], "")
 	again := deliver(q, 2000, 0)
 	if len(again.IDs) != 1 || again.IDs[0] != ids["long"] {

@@ -45,20 +45,22 @@ case "$2" in
   https://api.github.com/repos/test-owner/test-repo/releases/latest)
     cp latest.json "$4" ;;
   https://github.com/test-owner/test-repo/releases/download/v${version}/SHA256SUMS.txt)
-    cp fixture-sums "$4" ;;
+    ${outcome === 'sums-download' ? 'printf "%s\\n" "$2" >> downloads; exit 22' : 'cp fixture-sums "$4"'} ;;
   https://github.com/test-owner/test-repo/releases/download/v${version}/${asset})
-    cp fixture.zip "$4" ;;
+    ${outcome === 'pkg-download' ? 'printf "%s\\n" "$2" >> downloads; exit 22' : 'cp fixture.zip "$4"'} ;;
   *) exit 98 ;;
 esac
 printf '%s\\n' "$2" >> downloads
 `);
   const archive = command(process.env.AC2_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
-    ['-c', 'import sys,zipfile\nwith zipfile.ZipFile("fixture.zip", "w") as z: z.writestr("01_AC2_start.sh", sys.argv[1])',
-      launch + (outcome === 'launch-error' ? 'exit 7\n' : '')],
+    ['-c', 'import sys,zipfile\nwith zipfile.ZipFile("fixture.zip", "w") as z: z.writestr(sys.argv[2], sys.argv[1])',
+      launch + (outcome === 'launch-error' ? 'exit 7\n' : ''), outcome === 'no-start' ? 'README.txt' : '01_AC2_start.sh'],
     {cwd: dir});
   assert.equal(archive.status, 0, archive.stderr);
   const hash = createHash('sha256').update(fs.readFileSync(path.join(dir, 'fixture.zip'))).digest('hex');
-  file('fixture-sums', `${outcome === 'checksum' ? '0'.repeat(64) : hash} ${opt.star ? '*' : ' '}${asset}\r\n`);
+  // no-entry: the list names another package only
+  const listed = outcome === 'no-entry' ? asset.replace(platform, 'linux-riscv64') : asset;
+  file('fixture-sums', `${outcome === 'checksum' ? '0'.repeat(64) : hash} ${opt.star ? '*' : ' '}${listed}\r\n`);
   if (outcome === 'exists') {
     fs.mkdirSync(path.join(dir, 'home/archive-center2', folder));
     file(`home/archive-center2/${folder}/01_AC2_start.sh`, 'existing version');
@@ -113,6 +115,21 @@ printf '%s\\n' "$2" >> downloads
     } else if (outcome === 'checksum') {
       assert.match(result.stderr, /SHA-256/);
       assert.equal(fs.existsSync(installed), false);
+    } else if (outcome === 'pkg-download') {
+      assert.match(result.stderr, /패키지를 받지 못했습니다/);
+      assert.equal(fs.existsSync(installed), false);
+    } else if (outcome === 'sums-download') {
+      // the package is not fetched without its checksum list
+      assert.match(result.stderr, /체크섬 목록을 받지 못했습니다/);
+      assert.equal(read('downloads').includes(`${asset}\n`), false);
+      assert.equal(fs.existsSync(installed), false);
+    } else if (outcome === 'no-entry') {
+      assert.match(result.stderr, /항목을 확인할 수 없습니다/);
+      assert.equal(fs.existsSync(installed), false);
+    } else if (outcome === 'no-start') {
+      // the folder this run made and could not finish is removed
+      assert.match(result.stderr, /01_AC2_start\.sh를 찾을 수 없습니다/);
+      assert.equal(fs.existsSync(installed), false);
     } else if (outcome === 'exists') {
       // found before anything else: nothing downloaded, no tool installed, nothing added to the folder
       // nothing of the release is fetched (without --version: the version lookup alone)
@@ -145,6 +162,12 @@ try {
   fixture('darwin-arm64', 'arm64', '', 'success', 'Darwin');
   fixture('darwin-amd64', 'x86_64', '', 'success', 'Darwin');
   fixture('darwin-amd64', 'ppc', '', 'unsupported', 'Darwin');
+  fixture('android-arm64', 'x86_64', '/data/data/com.termux/files/usr', 'unsupported');
+  fixture('linux-amd64', 'x86_64', '', 'pkg-download');
+  fixture('linux-amd64', 'x86_64', '', 'sums-download');
+  fixture('linux-amd64', 'x86_64', '', 'no-entry');
+  fixture('linux-amd64', 'x86_64', '', 'no-start');
+  fixture('linux-arm64', 'aarch64', '', 'no-start', 'Linux', 'pipe');
   fixture('linux-amd64', 'x86_64', '', 'success', 'Linux', 'latest');
   fixture('linux-arm64', 'aarch64', '', 'success', 'Linux', 'pipe');
   fixture('linux-amd64', 'x86_64', '', 'checksum', 'Linux', 'pipe');

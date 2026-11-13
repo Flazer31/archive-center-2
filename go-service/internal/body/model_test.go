@@ -1,6 +1,9 @@
 package body
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 // The port's cycle estimate on the default model (28±2, period 5, luteal
 // 10-16), derived from the formulas: day 0 is the first day of a period,
@@ -50,11 +53,22 @@ func TestConceiveRules(t *testing.T) {
 		{"cannot conceive", func(s *Spec) { s.CanConceive = false }, nil, "x", "not_applicable", "explicit_exposure_or_world_setting"},
 		{"not conceiving", nil, func(i *ExposureInput) { i.Classification = "not_potentially_conceiving" }, "x", "not_applicable", "explicit_exposure_or_world_setting"},
 		{"incompatible", nil, func(i *ExposureInput) { i.Compatibility = "incompatible" }, "x", "not_applicable", "explicit_exposure_or_world_setting"},
-		{"contraception", nil, func(i *ExposureInput) { i.Contraception = "present" }, "x", "unknown", "contraception_context_not_modeled"},
-		{"unknown context", nil, func(i *ExposureInput) { i.Contraception = "unknown" }, "x", "unknown", "exposure_context_not_modeled"},
+		// a method not named is not modeled; a named one is
+		// contraception said without its method is a condom
+		{"contraception, no method", nil, func(i *ExposureInput) { i.Contraception = "present" }, "x", "evaluated", ""},
+		{"contraception, other method", nil, func(i *ExposureInput) { i.Contraception, i.Method = "present", "other" }, "x", "evaluated", ""},
+		{"condom", nil, func(i *ExposureInput) { i.Contraception, i.Method = "present", "condom" }, "x", "evaluated", ""},
+		// contraception the text does not name is none
+		{"contraception not said", nil, func(i *ExposureInput) { i.Contraception = "unknown" }, "x", "evaluated", ""},
+		// the person's body decides: a partner or a kind of act the text
+		// leaves unsaid is drawn
+		{"partner unsaid", nil, func(i *ExposureInput) { i.Compatibility = "unknown" }, "x", "evaluated", ""},
+		{"kind unsaid", nil, func(i *ExposureInput) { i.Classification = "unknown" }, "x", "evaluated", ""},
+		{"nothing said", nil, func(i *ExposureInput) {
+			i.Classification, i.Compatibility, i.Contraception = "unknown", "unknown", "unknown"
+		}, "x", "evaluated", ""},
 		{"no seed", nil, nil, "", "unknown", "simulation_seed_unavailable"},
 		{"before the cycle start", nil, func(i *ExposureInput) { i.Day = -1 }, "x", "unknown", "exact_event_date_or_reference_unresolved"},
-		{"author allowed unknown context", nil, func(i *ExposureInput) { i.Contraception, i.AuthorAllowed = "unknown", true }, "x", "evaluated", ""},
 	}
 	for _, c := range cases {
 		sp, in := s, yes
@@ -75,7 +89,7 @@ func TestConceiveRules(t *testing.T) {
 			in := yes
 			in.Day = d
 			x := Conceive(s, seed, "N1", 0, in)
-			if again := Conceive(s, seed, "N1", 0, in); again != x {
+			if again := Conceive(s, seed, "N1", 0, in); !reflect.DeepEqual(again, x) {
 				t.Fatalf("not deterministic: %+v %+v", x, again)
 			}
 			if x.Implanted {

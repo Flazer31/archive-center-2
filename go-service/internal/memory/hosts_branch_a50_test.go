@@ -213,13 +213,18 @@ func TestA50GrandchildPointOnInheritedLocalRow(t *testing.T) {
 		t.Fatal("inherited local branch coordinate lost")
 	}
 }
+
+// The parent keeps only its newest reply text, so a branch that still holds
+// the parent's earlier reply no longer finds it: the branch's turn is its
+// own (its memory is made for it) and it never takes the parent's newer
+// reply.
 func TestA50ParentOldResponseRevisionRetained(t *testing.T) {
 	p := session50("P", pair50("p1", "q", "old answer")...)
 	old := memory.Own(p)[0].Source.Key()
 	c := session50("C", append(pair50("c1", "q", "old answer"), mark50("P", "p1a", "m"))...)
 	apply50(p, pair50("p1", "q", "new answer")...)
 	v := scope50(t, c, p)
-	if !v[0].Inherited || v[0].Source.Key() != old {
-		t.Fatal("old response revision lost")
+	if len(v) != 1 || v[0].Inherited || v[0].Source.Key() == old || v[0].Source.Session != c.Key || v[0].Source.Responses[0].Data != "old answer" {
+		t.Fatalf("a branch holding the parent's overwritten reply must be its own turn: %+v", v)
 	}
 }

@@ -75,7 +75,7 @@ func TestSupersededKeepsAnEventNamedByAnEffect(t *testing.T) {
 	}
 }
 
-// Review F1 (2026-11-10): the generation call reads a partly changed fact
+// The generation call reads a partly changed fact
 // with the slots later records changed, as the delivery line does, so its
 // old values of those are not taken as current; a fact replaced whole and an
 // unchanged fact carry no such note.

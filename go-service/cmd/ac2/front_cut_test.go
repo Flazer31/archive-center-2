@@ -10,11 +10,11 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// RisuAI's /cut or /del takes the front of the chat away (user 11-08: its
-// text and memory must stay). Through the production pipeline and
-// /memory/inject: the memory of the turn cut away is still delivered, the
-// next input is a new turn, and a later screen delete of the last turn still
-// takes that turn's memory out.
+// RisuAI's /cut or /del takes the front of the chat away (its text and
+// memory must stay). Through the production pipeline and /memory/inject: the
+// memory of the turn cut away is still delivered, the next input is a new
+// turn, and a later screen delete of the last turn still takes that turn's
+// memory out.
 func TestFrontCutKeepsMemory(t *testing.T) {
 	h := hudFixture(t, "", 0)
 	scope, rows := injectionSeed(t, h, "C")

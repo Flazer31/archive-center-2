@@ -818,7 +818,7 @@ test("acknowledged texts of older chats are dropped; a chat visited again sends 
   await state.unload();
 });
 
-// ---- Astra 20 (ASTRA-RECHECK-20.md R1, N1, N2), kept as regressions ----
+// ---- outbox counterexamples, kept as regressions ----
 
 test("an event sent before a reload stays protected and goes out first after a full outbox reload", async () => {
   const rows = [{ role: "user", chatId: "u", data: "question" }, { role: "char", chatId: "a", generationInfo: { generationId: "g" }, data: "answer" }];
@@ -879,7 +879,7 @@ test("a late acknowledgement does not bring back texts of chats already dropped"
   await state.unload();
 });
 
-// ---- Astra 21 (ASTRA-RECHECK-21.md R1, R2), kept as regressions ----
+// ---- slow storage counterexamples, kept as regressions ----
 
 test("with slow device storage no batch leaves before its sent-mark is saved, and an output survives a full reload", async () => {
   const rows = [{ role: "user", chatId: "u", data: "question" }, { role: "char", chatId: "a", generationInfo: { generationId: "g" }, data: "answer" }];
@@ -1065,7 +1065,7 @@ test("the status chip follows the backend's state", async () => {
   assert.strictEqual(state.buttons.length, 1);
   assert.ok(state.statusAsks[0].endsWith("/status?chat_id=chat-1"), "asked without the open chat: " + state.statusAsks[0]);
   assert.strictEqual(last().id, "ac2-chip");
-  assert.strictEqual(last().location, "action");
+  assert.strictEqual(last().location, "chat"); // the chat menu, not over other screens' close button
   assert.ok(last().name.includes("기억 만드는 중"), last().name);
   assert.strictEqual(state.chipTimers.length, 1, "a changing state is asked again");
   state.chip = "done";
@@ -1101,7 +1101,7 @@ test("the action icon keeps its archive outline and uses only its corner dot for
       await loadPlugin(state);
       const button = state.buttons.at(-1);
       assert.strictEqual(button.id, "ac2-chip");
-      assert.strictEqual(button.location, "action");
+      assert.strictEqual(button.location, "chat");
       assert.strictEqual(button.iconType, "img");
       assert.ok(button.name.startsWith("Archive Center 2 · "));
       const svg = decodeURIComponent(button.icon.slice("data:image/svg+xml,".length));
@@ -1191,7 +1191,7 @@ test("a key typed for one provider is not sent with another", async () => {
     const pick = (label) => choose(f("ac2-cprov"), label);
     for (const p of to) await pick(p);
     if (again) f(field).value = again;
-    await all(body).find((e) => e.tag === "button" && text(e) === "저장").listeners.click();
+    await all(body).find((e) => e.tag === "button" && text(e) === "평론가·임베딩 저장").listeners.click();
     return posts[posts.length - 1].critic;
   };
   let c = await save("KEY-FOR-OPENAI", "ac2-ckey", ["Custom"]);
@@ -1212,7 +1212,7 @@ test("a key typed for one provider is not sent with another", async () => {
     f("ac2-ekey").value = typed;
     for (const label of to) await choose(f("ac2-eprov"), label);
     if (again) f("ac2-ekey").value = again;
-    await all(body).find((e) => e.tag === "button" && text(e) === "저장").listeners.click();
+    await all(body).find((e) => e.tag === "button" && text(e) === "평론가·임베딩 저장").listeners.click();
     return { emb: posts[posts.length - 1].embedding, model: f("ac2-emodel").value };
   };
   let e = await embedSave("PA-VOYAGE", ["OpenAI"]);
@@ -1229,7 +1229,7 @@ test("a key typed for one provider is not sent with another", async () => {
   const body = new E("div");
   await ctx.run(body);
   const f = (id) => all(body).find((x) => x.id === id);
-  const saveNow = async () => { await all(body).find((x) => x.tag === "button" && text(x) === "저장").listeners.click(); return posts[posts.length - 1].embedding; };
+  const saveNow = async () => { await all(body).find((x) => x.tag === "button" && text(x) === "평론가·임베딩 저장").listeners.click(); return posts[posts.length - 1].embedding; };
   await choose(f("ac2-eprov"), "Ollama");
   assert.ok(!f("ac2-emodelpick").hidden && f("ac2-emodel").hidden, "the list, not the text field");
   await choose(f("ac2-emodelpick"), "bge-m3");
@@ -1247,7 +1247,7 @@ test("a key typed for one provider is not sent with another", async () => {
 });
 
 // The worldline screen with a stand-in document: the plugin's own map code,
-// the backend answered here (SOL-REVIEW-STEP9-07 R07-03, 04, 05).
+// the backend answered here (04, 05).
 test("the worldline map opens one fold at a time, keeps branch boxes apart and pages a turn's memories", async () => {
   class E {
     constructor(tag, attrs = {}, ...kids) {
@@ -1316,7 +1316,7 @@ test("the worldline map opens one fold at a time, keeps branch boxes apart and p
   assert.strictEqual(cards, 30);
   const more = (function find(e) { if (e instanceof E) { if (e.tag === "button" && e.kids.includes("더 보기")) return e; for (const k of e.kids) { const f = find(k); if (f) return f; } } return null; })(body);
   assert.ok(more && !more.hidden, "no more button");
-  // a second click while a page is on its way asks for no page twice (SOL-REVIEW-STEP9-08 R08-02)
+  // a second click while a page is on its way asks for no page twice
   await Promise.all([more.fire("click"), more.fire("click")]);
   assert.strictEqual(cards, 60, "a page was shown twice");
   await more.fire("click");
@@ -1612,6 +1612,15 @@ test("cold start runs for the open chat after naming it and the cost, shows the 
   progress = { total: 2, done: 1, failed: 1, waiting: 0, cancelled: 0, failures: [{ turn: 4, error: "model said no" }] };
   await btn("새로고침").listeners.click();
   assert.ok(text(box).includes("4턴 실패: model said no") && text(box).includes("오류를 포함해 끝남"), text(box));
+  // waiting after a failed call (bug report 11-12): told apart from running, with the next call's time; still asked again
+  progress = { total: 2, done: 0, failed: 0, waiting: 2, cancelled: 0, failures: [], running: false, retry_waiting: true, retry_at: "2026-11-12T10:00:00Z" };
+  await btn("새로고침").listeners.click();
+  assert.ok(text(box).includes("다시 시도 대기 · 다음 시도 ") && !text(box).includes("진행 중") && btn("작업 취소"), text(box));
+  assert.strictEqual(timers.filter((h) => h.ms === 5000 && !h.cleared).length, 1, "asked again while waiting");
+  // a call under way again is running, even with a wait left from before
+  progress = { ...progress, running: true };
+  await btn("새로고침").listeners.click();
+  assert.ok(text(box).includes("진행 중") && !text(box).includes("다시 시도 대기"), text(box));
   // a number: the most recent turns
   all(box).find((e) => e.id === "ac2-coldn").value = "5";
   // the backend lacked texts the snapshot sent as fingerprints: once more with them
@@ -1641,8 +1650,8 @@ async function u5Screen() {
   const text = (e) => typeof e === "string" ? e : e.textContent + e.children.map(text).join("");
   const view = { critic: { provider: "openai", model: "test", retries: 3 }, embedding: { provider: "voyageai", model: "fake" },
     providers: ["openai", "claude", "gemini", "custom"].map((id) => ({ id, label: id })), embed_providers: [], service_tier_providers: ["openai", "custom"] };
-  let prompt = "Default instructions including JSON shape";
-  let pubPrompt = "Default guide rules";
+  let prompt = "Default instructions including JSON shape", promptStored = false;
+  let pubPrompt = "Default guide rules", pubStored = false;
   const budget = { memory_chars: 2000, secret_chars: 4000, placement: "auto", anchor: "", placements: ["auto", "before_latest_user", "after_anchor_marker", "after_last_cache_point", "after_first_system", "end"] };
   const providers = view.providers.map((p) => ({ ...p, reasoning: ["low", "high"], needs_key: true }));
   const prep = {
@@ -1654,8 +1663,8 @@ async function u5Screen() {
   const ctx = vm.createContext({ document: { createElement: (tag) => new E(tag) }, refreshChip() {}, bridge: async (url, init) => {
     const b = init.body ? JSON.parse(init.body) : null;
     if (b) { posts.push({ url, body: b }); if (fail) return { ok: false, code: fail }; if (url === failPost) return { ok: false, code: "store_failed" }; }
-    if (url === "/settings/prompt") { if (b) prompt = b.reset ? "Default instructions including JSON shape" : b.content; return { ok: true, json: { content: prompt } }; }
-    if (url === "/settings/publisher-prompt") { if (b) pubPrompt = b.reset ? "Default guide rules" : b.content; return { ok: true, json: { content: pubPrompt } }; }
+    if (url === "/settings/prompt") { if (b) { prompt = b.reset ? "Default instructions including JSON shape" : b.content; promptStored = !b.reset; } return { ok: true, json: { content: prompt, custom: promptStored } }; }
+    if (url === "/settings/publisher-prompt") { if (b) { pubPrompt = b.reset ? "Default guide rules" : b.content; pubStored = !b.reset; } return { ok: true, json: { content: pubPrompt, custom: pubStored } }; }
     if (url === "/settings/memory") { if (b) Object.assign(budget, b); return { ok: true, json: JSON.parse(JSON.stringify(budget)) }; }
     if (url === "/settings/decision/test") return { ok: true, json: { ok: true, ms: 580 } };
     if (!b && url === failGet) return { ok: false, code: "store_failed" };
@@ -1671,13 +1680,51 @@ async function u5Screen() {
     models: () => ctx.models(body), budget: () => ctx.budget(body), prep: () => ctx.prep(body), prepView: prep, failGet: (u) => { failGet = u; }, hold: (u) => { holdUrl = u; let rel; gate = new Promise((r) => { rel = r; }); return rel; }, failPost: (u) => { failPost = u; }, fail: (code) => { fail = code; } };
 }
 
+test("settings screens warn when the backend says a saved choice lacks its connection (1.1)", async () => {
+  const shown = (ui, part) => ui.all(ui.body).find((e) => ui.text(e).startsWith("지금 저장된 설정으로는 " + part) && !(e.children || []).some((c) => c && c.tag));
+  const ui = await u5Screen();
+  ui.prepView["/settings/preprocess"].mode = "ai_jev";
+  ui.prepView["/settings/preprocess"].problem = "decision_off";
+  ui.prepView["/settings/preprocess"].problems = ["decision_off", "ai_off"];
+  await ui.prep();
+  const w = shown(ui, "전처리");
+  // every part the backend names, told as the critic's problem is (an error, not the outgoing-text notice)
+  assert.ok(w && ui.text(w) === "지금 저장된 설정으로는 전처리를 쓸 수 없어요: 판정 모델 없음 · AI 연결 없음" && /ac2-err/.test(w.className || (w.attrs && w.attrs.class) || ""), w && ui.text(w));
+  // another value on the screen than the saved one: the warning is not about it
+  const mode = ui.f("ac2-prep-mode");
+  mode.value = ""; mode.listeners.change();
+  assert.ok(w.hidden, "hidden for an unsaved mode");
+  mode.value = "ai_jev"; mode.listeners.change();
+  assert.ok(!w.hidden, "shown again with the saved mode");
+  const ok = await u5Screen(); await ok.prep();
+  assert.ok(!shown(ok, "전처리"), "no warning without a problem");
+  const pub = await u5Screen();
+  pub.prepView["/settings/narrative"].problem = "ai_off";
+  await pub.models();
+  const pw = shown(pub, "출판사");
+  assert.ok(pw && pub.text(pw) === "지금 저장된 설정으로는 출판사를 쓸 수 없어요: AI 연결 없음", pw && pub.text(pw));
+  const level = pub.f("ac2-guide-level");
+  level.value = "mid"; level.listeners.change();
+  assert.ok(pw.hidden, "hidden for an unsaved level");
+  level.value = ""; level.listeners.change();
+  assert.ok(!pw.hidden, "shown again with the saved level");
+  // kept for an unsaved prompt edit while the critic is saved: its warning was the earlier critic's
+  pub.f("ac2-pub-prompt").value = "edited, not saved";
+  pub.click("평론가·임베딩 저장");
+  await tick(20);
+  const kept = shown(pub, "출판사");
+  assert.ok(kept === pw && pw.hidden, "the kept box keeps no warning about the earlier critic");
+  level.value = "mid"; level.listeners.change(); level.value = ""; level.listeners.change();
+  assert.ok(pw.hidden, "back to the saved level, the earlier critic's warning stays gone");
+});
+
 test("preprocessing tab (step 5): the backend's choices are shown, JEV recommended; one save sends the decision model and the mode; keys only when typed; the publisher is on the models tab", async () => {
   const ui = await u5Screen(); await ui.prep();
   const opts = (id) => ui.f(id).children.map((o) => o.value + "=" + ui.text(o));
   assert.deepStrictEqual(opts("ac2-prep-mode"), ["ai_jev=AI + 판정 모델", "ai=AI", "jev=판정 모델 (권장)", "=사용 안 함"]);
   assert.ok(ui.text(ui.body).includes("후보 기억 원문과 최근 대화가 판정 모델과 AI로 나가요"), "the outgoing-text notice");
   assert.ok(!ui.f("ac2-guide-level") && ui.text(ui.body).includes("'모델' 탭에 있어요"), "the publisher is not on this tab");
-  // only the connections the chosen mode uses are shown (user 11-08)
+  // only the connections the chosen mode uses are shown
   const shown = () => [ui.f("ac2-prep-ai-box").hidden ? "" : "ai", ui.f("ac2-prep-jev-box").hidden ? "" : "jev"].filter(Boolean).join("+");
   const seen = {};
   for (const m of ["", "ai", "jev", "ai_jev"]) { ui.f("ac2-prep-mode").value = m; ui.f("ac2-prep-mode").listeners.change(); seen[m] = shown(); }
@@ -1767,7 +1814,7 @@ test("models tab: saving the critic/embedding keeps what was typed (not saved) i
   const ui = await u5Screen();
   await ui.models();
   ui.f("ac2-guide-chars").value = "1500"; ui.f("ac2-input-mode").value = "blend";
-  await ui.click("저장");
+  await ui.click("평론가·임베딩 저장");
   assert.ok(ui.text(ui.body).includes("저장했어요. 다음 기억 생성"), "the critic save is told");
   assert.deepStrictEqual(ui.posts.map((p) => p.url), ["/settings/models"], "the publisher was not saved");
   assert.deepStrictEqual([ui.f("ac2-guide-chars").value, ui.f("ac2-input-mode").value], ["1500", "blend"], "the publisher box was redrawn from the server");
@@ -1781,11 +1828,11 @@ test("models tab: a publisher box that was not edited is read again after a crit
   await ui.models();
   assert.ok(!ui.f("ac2-guide-chars"), "the failed read left an error box");
   ui.failGet("");
-  await ui.click("저장");
+  await ui.click("평론가·임베딩 저장");
   assert.ok(ui.f("ac2-guide-chars"), "the box stayed an error box after the save");
   // untouched box, the server value changed elsewhere
   ui.prepView["/settings/narrative"].chars = 4500;
-  await ui.click("저장");
+  await ui.click("평론가·임베딩 저장");
   assert.strictEqual(ui.f("ac2-guide-chars").value, "4500");
   await ui.click("출판사 설정 저장");
   assert.strictEqual(ui.posts.at(-1).body.chars, 4500);
@@ -1796,7 +1843,7 @@ test("models tab: the critic save works while the publisher box is still loading
   const release = ui.hold("/settings/narrative");
   const loading = ui.models();
   await tick(10);
-  await ui.click("저장");
+  await ui.click("평론가·임베딩 저장");
   assert.deepStrictEqual(ui.posts.map((p) => p.url), ["/settings/models"]);
   assert.ok(ui.text(ui.body).includes("저장했어요. 다음 기억 생성"), "no saved message");
   release(); await loading;
@@ -1848,13 +1895,13 @@ test("U5 model controls save optional values, show provider fields, and render J
   ui.f("ac2-cprov").value = "openai"; ui.f("ac2-cprov").listeners.change();
   const typed = { "ac2-timeout": "65", "ac2-temperature": "0", "ac2-max-tokens": "4567", "ac2-extra-headers": '{"X-U5":"yes"}', "ac2-extra-body": '{"top_p":0.9}', "ac2-tier": "priority", "ac2-claude-cache": "ephemeral_5m" };
   for (const [id, value] of Object.entries(typed)) ui.f(id).value = value;
-  await ui.click("저장");
+  await ui.click("평론가·임베딩 저장");
   let c = ui.posts.filter((p) => p.url === "/settings/models").at(-1).body.critic;
   assert.deepStrictEqual([c.timeout_ms, c.temperature, c.max_tokens, c.extra_headers_json, c.extra_body_json, c.service_tier, c.claude_prompt_cache], [65000, 0, 4567, typed["ac2-extra-headers"], typed["ac2-extra-body"], "priority", "ephemeral_5m"]);
   for (const id of ["ac2-timeout", "ac2-temperature", "ac2-max-tokens"]) { assert.notStrictEqual(ui.f(id).value, ""); ui.f(id).value = ""; }
-  await ui.click("저장"); c = ui.posts.filter((p) => p.url === "/settings/models").at(-1).body.critic;
+  await ui.click("평론가·임베딩 저장"); c = ui.posts.filter((p) => p.url === "/settings/models").at(-1).body.critic;
   assert.deepStrictEqual([c.timeout_ms, c.temperature, c.max_tokens], [null, null, null]);
-  for (const code of ["bad_extra_headers_json", "bad_extra_body_json"]) { ui.fail(code); await ui.click("저장"); assert.ok(ui.text(ui.body).includes(code.includes("headers") ? "Extra Headers는 JSON 객체" : "Extra Body는 JSON 객체")); }
+  for (const code of ["bad_extra_headers_json", "bad_extra_body_json"]) { ui.fail(code); await ui.click("평론가·임베딩 저장"); assert.ok(ui.text(ui.body).includes(code.includes("headers") ? "Extra Headers는 JSON 객체" : "Extra Body는 JSON 객체")); }
 });
 
 test("U5 timeout displays saved milliseconds as seconds and sends seconds as milliseconds", async () => {
@@ -1865,11 +1912,11 @@ test("U5 timeout displays saved milliseconds as seconds and sends seconds as mil
     assert.strictEqual(ui.f("ac2-timeout").value, stored == null ? "" : String(stored / 1000));
     assert.strictEqual(ui.f("ac2-timeout")["aria-label"], "응답 대기 시간(초)");
     assert.ok(ui.text(ui.body).includes("비우면 600초(10분)"));
-    await ui.click("저장");
+    await ui.click("평론가·임베딩 저장");
     assert.strictEqual(ui.posts.filter((p) => p.url === "/settings/models").at(-1).body.critic.timeout_ms, stored ?? null);
     for (const [seconds, milliseconds] of [["600", 600000], ["12", 12000], ["1.25", 1250], ["1.001", 1001], ["0", 0], ["", null]]) {
       ui.f("ac2-timeout").value = seconds;
-      await ui.click("저장");
+      await ui.click("평론가·임베딩 저장");
       const sent = ui.posts.filter((p) => p.url === "/settings/models").at(-1).body.critic;
       assert.strictEqual(sent.timeout_ms, milliseconds);
       assert.strictEqual(ui.f("ac2-timeout").value, seconds);
@@ -1906,6 +1953,77 @@ test("publisher prompt editor (user 11-09) saves and restores its own text, apar
   assert.deepStrictEqual(ui.posts.at(-1), { url: "/settings/publisher-prompt", body: { reset: true } });
   assert.strictEqual(ui.f("ac2-pub-prompt").value, "Default guide rules");
   assert.ok(!ui.posts.some((p) => p.url === "/settings/prompt"), "the critic's prompt is not sent");
+});
+
+test("models tab (user 11-10): each prompt editor sits in its own AI's box and tells whether a saved edit is in use", async () => {
+  const ui = await u5Screen(); await ui.models();
+  const boxOf = (id) => ui.all(ui.body).filter((d) => d.tag === "div" && (d.className || d.class || "").includes("ac2-box") && ui.all(d).some((e) => e.id === id));
+  const critic = boxOf("ac2-prompt").find((d) => ui.text(d).includes("평론가 · 대화를 읽고 기억을 만듭니다"));
+  assert.ok(critic, "the critic prompt is inside the critic box");
+  assert.ok(ui.all(critic).some((e) => e.id === "ac2-cprov") && !ui.all(critic).some((e) => e.id === "ac2-pub-prompt"), "the critic box holds the critic's provider and only its own prompt");
+  const pub = boxOf("ac2-pub-prompt").find((d) => ui.all(d).some((e) => e.id === "ac2-guide-level"));
+  assert.ok(pub && !ui.all(pub).some((e) => e.id === "ac2-prompt"), "the publisher prompt is inside the publisher box");
+  const tellsIn = (box) => ui.text(box.children.find((d) => d.tag === "details" && ui.all(d).some((e) => e.id === "ac2-prompt" || e.id === "ac2-pub-prompt")) || box);
+  assert.ok(tellsIn(critic).includes("기본 지시문을 쓰는 중이에요"));
+  ui.f("ac2-prompt").value = "My rules";
+  await ui.all(critic).find((e) => e.tag === "button" && ui.text(e) === "지시문 저장").listeners.click();
+  assert.ok(ui.text(critic).includes("직접 고친 지시문을 쓰는 중이에요"), ui.text(critic));
+  // a critic/embedding save redraws; the saved (not dirty) prompt is read again, still inside the critic box
+  await ui.click("평론가·임베딩 저장");
+  const again = boxOf("ac2-prompt").find((d) => ui.text(d).includes("평론가 · 대화를 읽고 기억을 만듭니다"));
+  assert.ok(again && ui.f("ac2-prompt").value === "My rules");
+  // an unsaved edit survives the redraw in the critic box
+  ui.f("ac2-prompt").value = "typing";
+  await ui.click("평론가·임베딩 저장");
+  assert.strictEqual(ui.f("ac2-prompt").value, "typing");
+  assert.ok(boxOf("ac2-prompt").some((d) => ui.text(d).includes("평론가 · 대화를 읽고 기억을 만듭니다")));
+});
+
+test("models tab (review 11-10): each save tells its result in its own place, and the publisher save keeps an unsaved publisher prompt", async () => {
+  const ui = await u5Screen(); await ui.models();
+  const inPrompt = (id) => ui.all(ui.body).filter((d) => d.tag === "details" && ui.all(d).some((e) => e.id === id)).flatMap((d) => ui.all(d));
+  const statuses = () => ui.all(ui.body).filter((e) => e.role === "status" && !e.hidden);
+  ui.f("ac2-prompt").value = "critic typing";
+  await ui.click("평론가·임베딩 저장");
+  const told = statuses().filter((e) => ui.text(e).includes("평론가·임베딩 설정을 저장했어요"));
+  assert.strictEqual(told.length, 1, "told once");
+  assert.ok(!inPrompt("ac2-prompt").includes(told[0]), "not inside the critic prompt editor");
+  assert.strictEqual(ui.f("ac2-prompt").value, "critic typing", "the unsaved critic prompt stays");
+  assert.ok(!ui.posts.some((p) => p.url === "/settings/prompt"), "the critic prompt was not sent");
+  ui.f("ac2-pub-prompt").value = "publisher typing"; ui.f("ac2-guide-chars").value = "2500";
+  await ui.click("출판사 설정 저장");
+  assert.strictEqual(ui.posts.at(-1).url, "/settings/narrative");
+  assert.strictEqual(ui.f("ac2-pub-prompt").value, "publisher typing", "the unsaved publisher prompt stays");
+  const pubTold = statuses().filter((e) => ui.text(e).includes("출판사 설정을 저장했어요"));
+  assert.strictEqual(pubTold.length, 1);
+  assert.ok(!inPrompt("ac2-pub-prompt").includes(pubTold[0]), "not inside the publisher prompt editor");
+});
+
+test("models tab (review 11-10 r3): a save whose reread fails still keeps the unsaved prompt edits", async () => {
+  const ui = await u5Screen(); await ui.models();
+  ui.f("ac2-prompt").value = "critic typing"; ui.f("ac2-pub-prompt").value = "publisher typing";
+  ui.failGet("/settings/models");
+  await ui.click("평론가·임베딩 저장");
+  assert.strictEqual(ui.posts.at(-1).url, "/settings/models");
+  assert.strictEqual(ui.f("ac2-prompt") && ui.f("ac2-prompt").value, "critic typing", "the critic prompt edit stays after the failed reread");
+  assert.strictEqual(ui.f("ac2-pub-prompt") && ui.f("ac2-pub-prompt").value, "publisher typing", "the publisher prompt edit stays after the failed reread");
+  ui.failGet("");
+  const ui2 = await u5Screen(); await ui2.models();
+  ui2.f("ac2-pub-prompt").value = "publisher typing";
+  ui2.failGet("/settings/narrative");
+  await ui2.click("출판사 설정 저장");
+  assert.strictEqual(ui2.posts.at(-1).url, "/settings/narrative");
+  assert.strictEqual(ui2.f("ac2-pub-prompt") && ui2.f("ac2-pub-prompt").value, "publisher typing", "the publisher prompt edit stays after the failed reread");
+});
+
+test("prompt editor (review 11-10): saving the default text unchanged still counts as a saved edit, as the backend says", async () => {
+  const ui = await u5Screen(); await ui.models();
+  const critic = ui.all(ui.body).find((d) => d.tag === "details" && ui.all(d).some((e) => e.id === "ac2-prompt"));
+  assert.ok(ui.text(critic).includes("기본 지시문을 쓰는 중이에요"));
+  await ui.all(critic).find((e) => e.tag === "button" && ui.text(e) === "지시문 저장").listeners.click();
+  assert.ok(ui.text(critic).includes("직접 고친 지시문을 쓰는 중이에요"), ui.text(critic));
+  await ui.all(critic).find((e) => e.tag === "button" && ui.text(e) === "기본값 복원").listeners.click();
+  assert.ok(ui.text(critic).includes("기본 지시문을 쓰는 중이에요"));
 });
 
 test("U5 memory settings render backend choices and send placement and anchor", async () => {
@@ -2044,7 +2162,65 @@ async function u6Host(options = {}) {
 }
 
 
-// ---- Claude's screens (UI design 10-27): chats, chat actions, memories,
+test("turn HUD: dragged by its chip, kept on this device, put back from the settings", async () => {
+  const fire = async (el, type, ev) => { for (const { type: t, fn } of Object.values(el.listeners)) if (t === type) await fn({ type, ...ev }); };
+  const view = u6View(true); // active: read again while dragged
+  const h = await u6Host({ hud: view });
+  await tick(20);
+  const wrap = () => h.root.children.find((c) => c.tag === "section");
+  const chip = () => u6All(wrap()).find((e) => e.tag === "button" && u6Text(e).includes("AC2 ·"));
+  assert.ok(wrap().style.includes("calc(12px - 0px)") && wrap().style.includes("- 0px),calc(100vh"), wrap().style);
+  // a press that hardly moved is a click (it opens the panel)
+  await fire(chip(), "pointerdown", { clientX: 100, clientY: 100 });
+  await fire(h.root, "pointermove", { clientX: 102, clientY: 101 });
+  await fire(h.root, "pointerup", {});
+  await chip().click(); await tick(20);
+  assert.ok(u6Text(h.root).includes("AC2 기억 처리"), "a short press opens");
+  await chip().click(); await tick(20);
+  // a drag moves it and is no click
+  await fire(chip(), "pointerdown", { clientX: 100, clientY: 100 });
+  await fire(h.root, "pointermove", { clientX: 60, clientY: 150 });
+  assert.ok(wrap().style.includes("calc(12px - -40px)") && wrap().style.includes("- 50px),calc(100vh"), "follows the pointer: " + wrap().style);
+  // a redraw while dragging (the view read again) stays where the drag is
+  h.state.hud = u6View(true, true);
+  await h.fire();
+  assert.ok(wrap().style.includes("calc(12px - -40px)"), "a redraw moved it back: " + wrap().style);
+  await fire(h.root, "pointerup", {});
+  await tick(20);
+  assert.ok(wrap().style.includes("calc(12px - -40px)"), "after the drop: " + wrap().style);
+  // the whole HUD stays on the screen: its width and, open, the room above it
+  assert.ok(wrap().style.includes("calc(100vw - min(300px,calc(100vw - 24px)))"), wrap().style);
+  const shownBefore = u6Text(h.root).includes("AC2 기억 처리");
+  await chip().click(); await tick(20);
+  assert.strictEqual(u6Text(h.root).includes("AC2 기억 처리"), shownBefore, "the drag's end toggled the panel");
+  assert.deepStrictEqual(h.state.storeData.ac2_hud_pos_v1, { dx: -40, dy: 50 });
+  if (!u6Text(h.root).includes("AC2 기억 처리")) { await chip().click(); await tick(20); }
+  const panel = u6All(wrap()).find((e) => e.tag === "div" && /max-height/.test(e.style));
+  assert.ok(panel && panel.style.includes("calc(100vh - clamp(0px,calc(35vh + env(safe-area-inset-bottom,0px) - 50px)"), panel && panel.style);
+  await h.close();
+  // kept: a new start puts it where it was left
+  const h2 = await u6Host({ hud: u6View(false), storeData: { ac2_hud_pos_v1: { dx: -40, dy: 50 } } });
+  await tick(30);
+  const w2 = h2.root.children.find((c) => c.tag === "section");
+  assert.ok(w2 && w2.style.includes("calc(12px - -40px)"), w2 && w2.style);
+  await h2.close();
+  // put back from the settings screen
+  const h3 = await u6Host({ hud: u6View(false), storeData: { ac2_hud_pos_v1: { dx: -40, dy: 50 } } });
+  await tick(30);
+  await h3.settings[0].fn();
+  await tick(30);
+  const all = (e) => [e, ...(e.children || []).filter((c) => c && typeof c === "object").flatMap(all)];
+  const back = all(h3.frame).find((e) => e.id === "ac2-hud-place");
+  assert.ok(back, "no put-back button in the settings");
+  await back.click();
+  await tick(30);
+  const w3 = h3.root.children.find((c) => c.tag === "section");
+  assert.strictEqual(h3.state.storeData.ac2_hud_pos_v1, null);
+  assert.ok(w3 && w3.style.includes("calc(12px - 0px)"), w3 && w3.style);
+  await h3.close();
+});
+
+// ---- The screens: chats, chat actions, memories,
 // maintenance and the turn HUD. The real screen functions run against a
 // small DOM and a bridge that records every request and answers from the
 // test's table; nothing here is a copy of the plugin's logic.
@@ -2058,7 +2234,7 @@ class UiEl {
   append(...v) { for (const c of v) { if (c && typeof c === "object") { if (c.parent) c.parent.children = c.parent.children.filter((x) => x !== c); c.parent = this; } this.children.push(c); } }
   replaceChildren(...v) { for (const c of this.children) if (c && typeof c === "object" && c.parent === this) c.parent = null; this.children = []; this.append(...v.map((x) => (x === null || x === undefined ? String(x) : x))); } // as the DOM: a null becomes the text "null"
   get isConnected() { let n = this; while (n.parent) n = n.parent; return n.root === true; }
-  // as the DOM: setting textContent replaces the children (review 08)
+  // as the DOM: setting textContent replaces the children
   get textContent() { return this._text || ""; }
   set textContent(v) { if (this.children) { for (const c of this.children) if (c && typeof c === "object" && c.parent === this) c.parent = null; this.children = []; } this._text = v == null ? "" : String(v); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; }
@@ -2437,7 +2613,7 @@ test("chats tab: other chats are put in order before the open chat (C22/C25), af
   await s.btn("지금 채팅 앞에 이어붙이기").listeners.click();
   await s.btn("이어붙이기", s.confirm()).listeners.click();
   assert.deepStrictEqual(s.posts("/chats/attach").at(-1), { chat_id: "A", chats: ["B", "Cxxxxxxxxx"] });
-  // the backend waits for running memory work before it writes: the answer is waited for (review 10 R04)
+  // the backend waits for running memory work before it writes: the answer is waited for
   assert.deepStrictEqual(s.calls.filter((c) => c.path === "/chats/attach").map((c) => c.timeoutMs), [0, 0, 0]);
   assert.ok(uiText(s.body).includes("앞부분 과거로 이어붙였어요 · 턴 3개, 기억 4개"), uiText(s.body));
   assert.ok(uiText(s.body).includes("지금 연결: 리나 / 두 번째(턴 1 · 기억 2) → 채팅 Cxxxxxxx(턴 2 · 기억 2) → 지금 채팅"), uiText(s.body));
@@ -2536,6 +2712,31 @@ test("this turn: the last request's memories in order, budgets, the previous tur
   assert.strictEqual(uiText(pre), GIVEN.block, "the block as it went");
   await s.btn("자세히", s.items()[0]).listeners.click();
   assert.ok(uiText(s.items()[0]).includes("조건 · 해가 진 뒤"));
+  uiNoNull(s.body);
+});
+
+test("this turn (1.1 A1): where the last request's time went, step by step as the backend measured it", async () => {
+  const stages = [{ name: "observe", ms: 3 }, { name: "session", ms: 0 }, { name: "embed", ms: 512 }, { name: "body", ms: 0 }, { name: "select", ms: 40 },
+    { name: "preprocess", ms: 31738 }, { name: "narrative", ms: 11510 }, { name: "other", ms: 319 }];
+  const s = uiSim([["/injection", OK({ ...GIVEN, total_ms: 44122, stages })]]);
+  await s.ctx.turnTab(s.body);
+  const t = uiText(s.body);
+  assert.ok(t.includes("단계별 시간") && t.includes("입력 임베딩 0.5초 · 전처리 31.7초 · 출판사 11.5초 · 그 밖 0.3초"), t);
+  assert.ok(!t.includes("기억 고르기 0.0초") && !t.includes("관찰 반영"), "steps under 0.1 s are left out");
+  const old = uiSim([["/injection", OK(GIVEN)]]); // a trace from before 1.1 has no steps
+  await old.ctx.turnTab(old.body);
+  assert.ok(!uiText(old.body).includes("단계별"));
+  uiNoNull(s.body);
+});
+
+test("this turn (1.1 A2): how much of the request equals the previous one from the start, as the backend compared", async () => {
+  const s = uiSim([["/injection", OK({ ...GIVEN, prefix: { same: 0, total: 41, prev_total: 41, same_chars: 0, chars: 52310 } })]]);
+  await s.ctx.turnTab(s.body);
+  const t = uiText(s.body);
+  assert.ok(t.includes("직전 요청과 같은 앞부분") && t.includes("메시지 0 / 41개, 0 / 52310자 (직전 요청 41개)"), t);
+  const first = uiSim([["/injection", OK(GIVEN)]]); // nothing to compare since the backend started
+  await first.ctx.turnTab(first.body);
+  assert.ok(uiText(first.body).includes("비교 자료 없음"), uiText(first.body));
   uiNoNull(s.body);
 });
 
@@ -2943,9 +3144,19 @@ test("memories: the turns whose memory could not be made are made again after th
 
 test("memories: the body screen shows the switches, each person's state and facts, and sends records and settings (1.0 E09/E10)", async () => {
   const spec = { cycle_days: 28, variation_days: 2, period_days: 5, luteal_min_days: 10, luteal_max_days: 16, viability: 0.4, peak: 0.7, gestation_days: 266, can_conceive: true, cycle_enabled: true };
-  let view = { cycle_tracking_enabled: false, automatic_pregnancy_enabled: false, budget: 3000, people: [] };
-  const person = { who: "N1", name: "리나", spec, state: { lines: ["- body 리나 [calculated, private, not known to anyone]: on Day 5 cycle day 6"] },
-    facts: [{ id: 1, kind: "period_start", day: "Day 0", user: false }, { id: 2, kind: "conception_exposure", day: "Day 3", scope: "flashback", user: false, partners: ["카일"], result: { implanted: false } },
+  let view = { cycle_tracking_enabled: false, automatic_pregnancy_enabled: false, wait_for_latest_reply: false, budget: 3000, tendency_budget: 3000, people: [] };
+  const intensity = { cramps: 1, premenstrual: 2, nausea: 0, pregnancy_discomfort: 3, recovery_speed: 3 };
+  const person = { who: "N1", name: "리나", spec, intensity, state: { lines: ["- body 리나 [calculated, private, not known to anyone]: on Day 5 cycle day 6",
+    "[Archive Center: body tendencies — modeled]", "- body tendency 리나 [felt by her]: menstrual (cycle day 6) — mild cramps, fatigue"] },
+    facts: [{ id: 1, kind: "period_start", day: "Day 0", user: false }, { id: 2, kind: "conception_exposure", day: "Day 3", scope: "flashback", user: false, partners: ["카일"], result: { status: "evaluated", implanted: false } },
+      { id: 6, kind: "conception_exposure", day: "Day 5", user: false, partners: ["카일"], result: { status: "unknown", reason: "contraception_context_not_modeled", implanted: false } },
+      { id: 7, kind: "conception_exposure", day: "Day 6", user: false, result: { status: "not_applicable", reason: "modeled_pregnancy_ongoing", implanted: false } },
+      { id: 8, kind: "pregnancy_ended", day: "Day 7", user: false, outcome: "birth" },
+      { id: 13, kind: "pregnancy_ended", day: "Day 300", user: false, outcome: "birth", child: "하늘", paternity: "confirmed", fathers: ["카일"], unaware: ["리나"] },
+      { id: 14, kind: "child_named", day: "Day 303", user: false, child: "하늘" },
+      { id: 10, kind: "conception_exposure", day: "Day 8", user: false, result: { status: "evaluated", implanted: false, contraception: "condom" } },
+      { id: 11, kind: "emergency_contraception", day: "Day 9", user: false },
+      { id: 12, kind: "conception_exposure", day: "Day 10", user: false, result: { status: "evaluated", implanted: false, contraception: "magic" } },
       { id: 3, kind: "recovery_started", day: "Day 4", user: true }] };
   const s = uiSim([["/body", () => OK(view)], ["/body/settings", (b) => { view = { ...view, ...b }; return OK(b); }], ["/body/record", OK({ id: 9 })],
     ["/body/record/delete", OK({ status: "ok" })], ["/body/person", OK({ status: "ok" })]]);
@@ -2954,13 +3165,30 @@ test("memories: the body screen shows the switches, each person's state and fact
   assert.ok(uiText(s.body).includes("꺼져 있어요"), uiText(s.body));
   const sw = uiAll(s.body).find((e) => e.id === "ac2-body-cycle");
   await sw.listeners.click(); await tick(5);
-  assert.deepStrictEqual(s.posts("/body/settings"), [{ cycle_tracking_enabled: true, automatic_pregnancy_enabled: false }]);
+  assert.deepStrictEqual(s.posts("/body/settings"), [{ cycle_tracking_enabled: true, automatic_pregnancy_enabled: false, wait_for_latest_reply: false }]);
   assert.ok(uiText(s.body).includes("모든 채팅에 적용돼요"));
+  // the wait for the latest reply goes with the other switches kept
+  await uiAll(s.body).find((e) => e.id === "ac2-body-wait").listeners.click(); await tick(5);
+  assert.deepStrictEqual(s.posts("/body/settings")[1], { cycle_tracking_enabled: true, automatic_pregnancy_enabled: false, wait_for_latest_reply: true });
+  await uiAll(s.body).find((e) => e.id === "ac2-body-cycle").listeners.click(); await tick(5);
+  assert.deepStrictEqual(s.posts("/body/settings")[2], { cycle_tracking_enabled: false, automatic_pregnancy_enabled: false, wait_for_latest_reply: true }, "another switch keeps the wait");
+  await uiAll(s.body).find((e) => e.id === "ac2-body-cycle").listeners.click(); await tick(5);
   view = { ...view, people: [person] };
   await s.btn("새로고침").listeners.click(); await tick(5);
   const t = uiText(s.body);
   assert.ok(t.includes("리나") && t.includes("[calculated, private, not known to anyone]: on Day 5 cycle day 6") && !t.includes("- body 리나"), t);
-  assert.ok(t.includes("Day 0 · 월경 시작") && t.includes("Day 3 · 임신 가능한 관계 · 회상 · 상대 카일 · 모형: 착상 없음") && t.includes("Day 4 · 회복 시작 · 직접 기록"), t);
+  // the tendency line shows, its section header does not (1.1)
+  assert.ok(t.includes("[felt by her]: menstrual (cycle day 6) — mild cramps, fatigue") && !t.includes("[Archive Center: body tendencies") && t.includes("몸 변화 경향 몫 3000자"), t);
+  assert.ok(t.includes("Day 6 · 임신 가능한 관계 · 모형: 계산 안 함(모형 임신 중)"), t);
+  assert.ok(t.includes("Day 7 · 임신 끝남 · 출산"), t);
+  // a birth's child and father, and whose secret the father is (1.1)
+  assert.ok(t.includes("Day 300 · 임신 끝남 · 출산 · 아이 하늘 · 아버지 카일 · 비밀: 리나 모름"), t);
+  assert.ok(t.includes("Day 303 · 아이 이름 · 아이 하늘"), t);
+  // the method an exposure was drawn with, and emergency contraception
+  assert.ok(t.includes("Day 8 · 임신 가능한 관계 · 모형: 착상 없음 (피임: 콘돔)") && t.includes("Day 9 · 사후 피임") && t.includes("Day 10 · 임신 가능한 관계 · 모형: 착상 없음 (피임: 마법)"), t);
+  assert.ok(uiAll(s.body).some((e) => e.tag === "option" && e.value === "emergency_contraception" && uiText(e) === "사후 피임"), "emergency contraception can be recorded");
+  assert.strictEqual(uiAll(s.body).find((e) => e["aria-label"] === "회복 속도").value, "3");
+  assert.ok(t.includes("Day 0 · 월경 시작") && t.includes("Day 3 · 임신 가능한 관계 · 회상 · 상대 카일 · 모형: 착상 없음") && t.includes("Day 5 · 임신 가능한 관계 · 상대 카일 · 모형: 계산 안 함(피임 언급)") && !t.includes("Day 5 · 임신 가능한 관계 · 상대 카일 · 모형: 착상 없음") && t.includes("Day 4 · 회복 시작 · 직접 기록"), t);
   assert.strictEqual(uiAll(s.body).filter((e) => e.tag === "button" && uiText(e) === "지우기").length, 1, "only a fact recorded here is removed here");
   // record a fact
   const day = uiAll(s.body).find((e) => e["aria-label"] === "작중 날");
@@ -2976,14 +3204,23 @@ test("memories: the body screen shows the switches, each person's state and fact
   // settings go as numbers
   const cycle = uiAll(s.body).find((e) => e["aria-label"] === "주기(일)");
   cycle.value = "30";
+  // the intensity drawn in Go shows and goes back as edited (1.1)
+  const cramps = uiAll(s.body).find((e) => e["aria-label"] === "생리통");
+  assert.strictEqual(cramps.value, "1");
+  cramps.value = "3";
+  await cramps.listeners.change();
+  // a choice not saved yet survives a redraw
+  cycle.listeners.input();
+  await s.btn("새로고침").listeners.click(); await tick(5);
+  assert.strictEqual(uiAll(s.body).find((e) => e["aria-label"] === "생리통").value, "3");
   await s.btn("설정 저장").listeners.click(); await tick(5);
-  assert.deepStrictEqual(s.posts("/body/person"), [{ chat_id: "A", who: "N1", spec: { ...spec, cycle_days: 30 } }]);
+  assert.deepStrictEqual(s.posts("/body/person"), [{ chat_id: "A", who: "N1", spec: { ...spec, cycle_days: 30 }, intensity: { ...intensity, cramps: 3 } }]);
   uiNoNull(s.body);
 });
 
 test("memories: body switches write one at a time, typing during a save is kept, and a screen drawn again meanwhile shows the result (review 12 R03 R09 R13)", async () => {
   const spec = { cycle_days: 28, variation_days: 2, period_days: 5, luteal_min_days: 10, luteal_max_days: 16, viability: 0.4, peak: 0.7, gestation_days: 266, can_conceive: true, cycle_enabled: true };
-  const fresh = () => ({ cycle_tracking_enabled: false, automatic_pregnancy_enabled: false, budget: 3000, people: [] });
+  const fresh = () => ({ cycle_tracking_enabled: false, automatic_pregnancy_enabled: false, wait_for_latest_reply: false, budget: 3000, tendency_budget: 3000, people: [] });
   // R03: a second switch while the first is saving is not sent
   let view = fresh(); const pending = [];
   let s = uiSim([["/body", () => OK(JSON.parse(JSON.stringify(view)))], ["/body/settings", (b) => new Promise((r) => pending.push(() => { view = { ...view, ...b }; r(OK(b)); }))]]);
@@ -3086,7 +3323,7 @@ test("memories: editing reads the stored fields by ID and sends only what change
   assert.strictEqual(terms.value, "왕이 있는 동안");
   about.value = "N2"; terms.value = "";
   await s.btn("저장", panel).listeners.click(); await tick(5);
-  // review 05: the untouched body is not sent, so an old value cannot be written back
+  // the untouched body is not sent, so an old value cannot be written back
   assert.deepStrictEqual(s.posts("/memory/edit"), [{ chat_id: "A", id: "M60", patch: { about: "N2", terms: "" } }], "only changed fields, the emptied one as a clear");
   await s.btn("수정", s.items()[1]).listeners.click(); await tick(5);
   assert.ok(!s.calls.some((c) => c.path.includes("id=M61")), "a memory without a turn locator reads nothing more");
@@ -3115,7 +3352,7 @@ test("names: a recorded merge can be undone; one without a record says so", asyn
   await s.btn("되돌리기", s.confirm()).listeners.click(); await tick(5);
   assert.deepStrictEqual(s.posts("/names/unmerge"), [{ chat_id: "A", merge_id: 12 }, { chat_id: "A", merge_id: 12 }]);
   // it waits for a running generation/index run; no 8 s timeout that would
-  // show a failure before the undo is applied (cross-review 03)
+  // show a failure before the undo is applied
   assert.deepStrictEqual(s.calls.filter((c) => c.path === "/names/unmerge").map((c) => c.timeoutMs), [0, 0]);
   assert.ok(!uiText(s.body).includes("합침"), "the list is read again after undoing");
   uiNoNull(s.body);
@@ -3308,8 +3545,8 @@ test("memories: a save on the way keeps a redrawn list's card of that memory fro
     await s.btn("수정", card).listeners.click(); await tick(5);
     const aspect = uiAll(card).find((e) => e["aria-label"] === "생각의 갈래");
     assert.strictEqual(aspect.value, "accepted-first", route + ": the editor opened after the save reads the saved value");
-    // review 04: the redrawn card held the old body and importance; the editor
-    // shows the stored ones, so changing another field cannot write the old back
+    // the redrawn card held the old body and importance; the editor shows the
+    // stored ones, so changing another field cannot write the old back
     assert.strictEqual(uiAll(card).find((e) => e.tag === "textarea").value, "accepted body", route);
     assert.strictEqual(uiAll(card).find((e) => e["aria-label"] === "중요도").value, "7", route);
     aspect.value = "original";
@@ -3324,7 +3561,7 @@ test("memories: a save on the way keeps a redrawn list's card of that memory fro
   }
 });
 test("memories: a card drawn before another save ended never writes the saved body or importance back, whether its reads fail or are late", async () => {
-  // review 05: the editor sends only what the user changed from what it showed
+  // the editor sends only what the user changed from what it showed
   const stale = async (mode) => {
     let stored = { id: "M84", kind: "view", body: "original body", imp: 2, owner: "N1", aspect: "original" };
     let details = 0, names = 0, late;
@@ -3393,7 +3630,7 @@ test("memories: a read answered after the editor already saved does not put the 
   uiNoNull(s.body);
 });
 test("names: while a merge or undo runs, a list drawn again cannot send it a second time, and the list shown then reads the result", async () => {
-  // review 06: one write at a time, and the view drawn during the write reads again after it
+  // one write at a time, and the view drawn during the write reads again after it
   for (const op of ["merge", "unmerge"]) {
     const before = { names: [{ id: "N1", name: "Keep", type: "person", memories: 1, aliases: ["Merge"], alias_ids: ["N2"] }, { id: "N3", name: "Other", type: "person", memories: 1, aliases: [] }], merges: [{ merge_id: 12, merge: "N2", keep: "N1" }] };
     const after = op === "merge"
@@ -3425,7 +3662,7 @@ test("names: while a merge or undo runs, a list drawn again cannot send it a sec
   }
 });
 test("memories: an importance typed while the save runs is sent by the next save", async () => {
-  // review 06 (F-11 regression): the comparison after a save is what that save sent
+  // The comparison after a save is what that save sent
   const answers = [];
   const s = uiSim([["/memory/edit", (b) => new Promise((r) => answers.push(() => r(OK({ status: "ok" }))))]]);
   vm.runInContext("this.makeCard = memoryCard;", s.ctx);
@@ -3443,7 +3680,7 @@ test("memories: an importance typed while the save runs is sent by the next save
   uiNoNull(s.body);
 });
 test("one write at a time: each of the six other confirmations sends once though its screen is drawn again, and the list shown then has the result", async () => {
-  // review 06: cold start, one memory, chosen memories, a turn remake, a chat delete and the reindex
+  // cold start, one memory, chosen memories, a turn remake, a chat delete and the reindex
   for (const kind of ["one memory", "chosen memories", "turn remake", "cold start", "chat delete", "reindex"]) {
     const pending = [];
     let deleted = false;
@@ -3538,7 +3775,7 @@ test("settings: the write under way is shown on every tab; a failure after its t
   }
 });
 test("settings: a failure is told though its confirmation was cleared by a list read or the screen was closed, and an editor saving stays with its typing", async () => {
-  // review 07: failures stay visible; a busy notice never covers an editor
+  // failures stay visible; a busy notice never covers an editor
   const fail = { ok: false, code: "store_failed" };
   const mem = { id: "M1", kind: "view", body: "body", imp: 2, turn: 1 };
   const setup = async (answers) => {
@@ -3589,7 +3826,7 @@ test("settings: a failure is told though its confirmation was cleared by a list 
   uiNoNull(s.root);
 });
 test("lists: an older read answered after a newer one is not drawn, so a deleted row does not come back", async () => {
-  // review 07: only the latest read of a list draws
+  // only the latest read of a list draws
   let deleted = false, finish, oldRead, reads = 0;
   const mem = { id: "M1", kind: "view", body: "body", imp: 2, turn: 1 };
   const s = uiSim([["/memory/list", () => { reads++; if (reads === 2) return new Promise((r) => { oldRead = () => r(OK({ total: 1, kinds: { view: 1 }, memories: [{ ...mem }] })); }); return OK(deleted ? { total: 0, kinds: {}, memories: [] } : { total: 1, kinds: { view: 1 }, memories: [{ ...mem }] }); }],
@@ -3605,7 +3842,7 @@ test("lists: an older read answered after a newer one is not drawn, so a deleted
   uiNoNull(s.body);
 });
 test("lists: in the turns, chats, cold start and reindex views an older read answered late is not drawn over a newer one", async () => {
-  // review 07: only the latest read of each view draws
+  // only the latest read of each view draws
   const late = [];
   const once = (oldAnswer, newAnswer) => { let n = 0; return () => (++n === 1 ? new Promise((r) => late.push(() => r(oldAnswer))) : newAnswer); };
   const cases = [
@@ -3631,7 +3868,7 @@ test("lists: in the turns, chats, cold start and reindex views an older read ans
   }
 });
 test("names: an open name editor keeps its typing while another name saves, and a failed save keeps its input to retry", async () => {
-  // review 08: a busy notice or a failure never replaces a confirmation's inputs
+  // a busy notice or a failure never replaces a confirmation's inputs
   const names = { names: [{ id: "N1", name: "FIRST", type: "person", memories: 1, aliases: [] }, { id: "N2", name: "SECOND", type: "person", memories: 1, aliases: [] }], merges: [] };
   const answers = [];
   const s = uiSim([["/names", () => OK(names)], ["/names/edit", () => new Promise((r) => answers.push(r))]]);
@@ -3770,7 +4007,7 @@ test("turn HUD: the wrapper sits below the right midpoint and its expanded panel
   const h = await u6Host({ hud: u6View(false) });
   try {
     const wrap = h.root.children[0];
-    assert.match(wrap.style, /position:fixed;right:12px;bottom:calc\(35vh \+ env\(safe-area-inset-bottom,0px\)\)/);
+    assert.match(wrap.style, /position:fixed;right:clamp\(0px,calc\(12px - 0px\),calc\(100vw - min\(300px,calc\(100vw - 24px\)\)\)\);bottom:clamp\(0px,calc\(35vh \+ env\(safe-area-inset-bottom,0px\) - 0px\),calc\(100vh - 130px\)\)/);
     assert.ok(wrap.style.includes("flex-direction:column-reverse"));
     assert.ok(wrap.style.includes("width:min(300px,calc(100vw - 24px))"), "narrow (user 11-08)");
     await wrap.children[0].click();
@@ -3779,7 +4016,7 @@ test("turn HUD: the wrapper sits below the right midpoint and its expanded panel
     assert.strictEqual(expanded.style, wrap.style);
     const panel = expanded.children[1];
     assert.strictEqual(panel.tag, "div");
-    assert.ok(panel.style.includes("max-height:calc(65vh - 24px);overflow:auto"));
+    assert.ok(panel.style.includes("max-height:max(80px,min(calc(65vh - 24px),calc(100vh - clamp(0px,calc(35vh + env(safe-area-inset-bottom,0px) - 0px),calc(100vh - 130px)) - 50px)));overflow:auto"), panel.style);
     assert.ok(u6Text(panel).includes("AC2 기억 처리"));
   } finally { await h.close(); }
 });
@@ -3818,10 +4055,9 @@ test("turn HUD: an unchanged view keeps the same chip, puts it back when the pag
     assert.ok(u6Text(h.root).includes("개 저장"));
   } finally { await h.close(); }
 });
-// HUD rebuild (user 11-08 "기억 생성 실패해도 뭐 알려주는 게 없는데 HUD가
-// 왜 필요해", "다시 시도를 했을 때에도 HUD에서 알려줬으면"): failures show
-// red with what happened and where the retry stands; a request that never
-// reached the backend is shown; a retry is told while it runs.
+// HUD rebuild: failures show red with what happened and where the retry
+// stands; a request that never reached the backend is shown; a retry is
+// told while it runs.
 test("turn HUD: a memory request that does not reach the backend shows 연결 실패 until one does", async () => {
   const h = await u6Host({ hud: u6View(false) });
   try {
@@ -3899,8 +4135,17 @@ test("turn HUD: narrative support is told — the guide's level and items, the i
   const h2 = await u6Host({ hud: fb });
   await tick(20);
   const t2 = u6Text(h2.root);
-  assert.ok(t2.includes("가이드 약하게 · AI 실패 · 입력 원문 그대로 · 출판사 연결 없음"), t2);
+  assert.ok(t2.includes("가이드 약하게 · AI 실패 · 입력 원문 그대로 · 출판사 설정 안 됨 (AI 연결 없음)"), t2);
   await h2.close();
+  // one reason for both: told once
+  const one = u6View(false);
+  one.settings.compact = false;
+  one.turns[0].injection.narrative = { level: "weak", guide: "ai_off", input: "clarify", input_result: "ai_off", ai_calls: 0, ms: 10 };
+  const h4 = await u6Host({ hud: one });
+  await tick(20);
+  const t4 = u6Text(h4.root);
+  assert.ok(t4.includes("가이드 약하게 · 입력 원문 그대로 · 출판사 설정 안 됨 (AI 연결 없음)") && t4.split("출판사 설정 안 됨").length === 2, t4);
+  await h4.close();
   const bl = u6View(false);
   bl.settings.compact = false;
   bl.turns[0].injection.narrative = { level: "weak", guide: "made", kept: 1, input: "blend", input_result: "changed", ai_calls: 1, ms: 400 };
@@ -3950,7 +4195,7 @@ test("settings: a late answer of the tab left behind does not land in the tab no
     assert.ok(!shown.includes("최근 활동"), "the status tab's late answer must not show under this turn: " + shown.slice(0, 300));
   } finally { await h.close(); }
 });
-// review 19: failures the HUD did not show
+// failures the HUD did not show
 async function u6Send(h, type = "model") {
   const payload = [{ role: "user", content: "synthetic input" }];
   let out = payload;
@@ -4049,7 +4294,7 @@ test("turn HUD (review 19): a retry is told on the chip from its first call", as
   try { assert.ok(u6Text(h.root).includes("AC2 · 다시 시도 중 1/1"), u6Text(h.root)); } finally { await h.close(); }
 });
 
-// user 2026-11-10: errors and logs are not hidden; only credential values are.
+// errors and logs are not hidden; only credential values are.
 test("errors: a code without a text of its own shows the backend's code and message; only credential values are masked", () => {
   const a = SRC.indexOf("  function errText(res) {"), b = SRC.indexOf("  function el(tag, attrs", a);
   const m = SRC.indexOf("  function maskCredentials(text, token) {"), n = SRC.indexOf("\n  }", m) + 4;

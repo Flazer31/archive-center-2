@@ -43,6 +43,11 @@ type injection struct {
 	RecentQueryUsed *bool     `json:"recent_query_used,omitempty"`
 	Warning         string    `json:"warning,omitempty"`
 	TotalMS         int64     `json:"total_ms"`
+	// Stages split TotalMS by step (1.1 A1); none for traces before 1.1
+	Stages []store.DeliveryStage `json:"stages,omitempty"`
+	// Prefix: how much of the request equals the previous one from the
+	// start (1.1 A2); nil when there was none to compare
+	Prefix *store.RequestPrefix `json:"prefix,omitempty"`
 	// Preprocess is what a preprocessing mode did (nil when off)
 	Preprocess *store.PreprocessRecord `json:"preprocess,omitempty"`
 	// Narrative is what narrative support did (nil when off); the texts
@@ -92,8 +97,7 @@ func newStatus(db *store.DB, mods *models, worker *generate.Worker) *status {
 
 // detail is an error as the general status and HUD show it: a category,
 // never the text itself (a provider error can echo the input or a protected
-// name back; full review R1, 11-05). The raw text stays in the management
-// records that keep it.
+// name back). The raw text stays in the management records that keep it.
 func detail(err error) string {
 	if err == nil {
 		return ""
@@ -111,7 +115,7 @@ func rawDetail(err error) string {
 }
 
 func shorten(text string) string {
-	return diagnostics.Redact(text) // whole, credentials masked (user 11-08)
+	return diagnostics.Redact(text) // whole, credentials masked
 }
 
 func (s *status) add(e event) {
@@ -128,7 +132,7 @@ func (s *status) add(e event) {
 func (s *status) workerEvent(kind, session string, turn int, err error) {
 	chat := strings.TrimPrefix(session, "chat:")
 	// every generation and index outcome goes to the log too, with its whole
-	// error (credentials masked), so a failure can be read there (user 11-08)
+	// error (credentials masked), so a failure can be read there
 	if kind != "indexed" {
 		if err != nil {
 			log.Printf("worker: %s %s turn %d: %s", kind, session, turn, diagnostics.ErrorSummary(err.Error()))
@@ -158,8 +162,8 @@ func (s *status) injected(chat string, d store.Delivery, warning string, charsMa
 	in := &injection{At: s.now(), Chat: chat, Items: len(d.IDs), Chars: d.Chars, CharsMax: charsMax, SecretChars: d.SecretChars, SecretMax: secretMax, Ranked: d.Ranked, Warning: warning, TotalMS: ms}
 	in.RecentQueryUsed = &d.RecentQueryUsed
 	if d.Preprocess != nil {
-		// the provider's error text may quote the request (review 19 A-01):
-		// status and HUD carry its summary only
+		// the provider's error text may quote the request: status and HUD
+		// carry its summary only
 		p := *d.Preprocess
 		p.Error = diagnostics.ErrorSummary(p.Error)
 		in.Preprocess = &p

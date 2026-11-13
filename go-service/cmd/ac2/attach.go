@@ -29,7 +29,7 @@ type attachResult struct {
 }
 
 // attachHandler attaches stored chats as a chat's earlier story (C22 AC1's
-// archived-session attach, user decision 11-06 "연결 기록 추가"; C25 AC1's
+// archived-session attach; C25 AC1's
 // stitch: several chats in the order chosen, the chat itself last):
 //   - GET /chats/attach?chat_id= : the attached past (chats empty: none)
 //   - POST /chats/attach {"chat_id","chats":[...],"dry_run"} : attach the

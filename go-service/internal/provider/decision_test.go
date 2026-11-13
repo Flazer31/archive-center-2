@@ -150,8 +150,8 @@ func TestDecisionTypeSafeAndKeys(t *testing.T) {
 	}
 }
 
-// Review 16: a body read error is masked (A-01), a redirect is not followed
-// so the key goes nowhere else (A-02).
+// A body read error is masked, a redirect is not followed so the key
+// goes nowhere else.
 func TestDecisionReview16(t *testing.T) {
 	const key = "sk-review16-secret"
 	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

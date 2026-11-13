@@ -11,9 +11,9 @@ func (d *DB) CriticPrompt() (string, error) { return d.promptText("critic_prompt
 
 func (d *DB) SetCriticPrompt(text string) error { return d.setPromptText("critic_prompt", text) }
 
-// PublisherPrompt is the narrative guide's instruction override (user 11-09,
-// like AC1's editable publisher prompt): the rules above each level's item
-// list, never the items or the output shape. "" means the code's default.
+// PublisherPrompt is the narrative guide's instruction override (like AC1's
+// editable publisher prompt): the rules above each level's item list, never
+// the items or the output shape. "" means the code's default.
 func (d *DB) PublisherPrompt() (string, error) { return d.promptText("publisher_prompt") }
 
 func (d *DB) SetPublisherPrompt(text string) error { return d.setPromptText("publisher_prompt", text) }

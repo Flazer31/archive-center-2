@@ -13,8 +13,8 @@ import (
 	"archivecenter2/goservice/internal/pipeline"
 )
 
-// Astra 17 recheck counterexamples through the real HTTP handler, RawSink
-// and MariaDB state store (ASTRA-RECHECK-17.md section 5), kept as regressions.
+// Recheck counterexamples through the real HTTP handler, RawSink and
+// MariaDB state store, kept as regressions.
 type fail17 struct {
 	*DB
 	fail bool

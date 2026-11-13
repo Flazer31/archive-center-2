@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// 11-05 tester report: "status좀 늘려줄수 있음? 32칸이 한계라 모델이 그 이상하면
-// 평론가 아웃풋 버려짐". A model may write long values in the short columns;
+// A tester's report: a value longer than its 32-character column made the
+// critic's output be thrown away. A model may write long values in the short columns;
 // the turn's whole save must not fail because of it.
 func TestLongModelValuesAreStored(t *testing.T) {
 	db := testDB(t)

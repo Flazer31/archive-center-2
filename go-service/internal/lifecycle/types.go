@@ -3,7 +3,7 @@
 // rejects an observation because a coordinate is missing or changed.
 //
 // Signal meanings follow the RisuAI source (commit 02a8369) and are not yet
-// confirmed on a live host (STEP1-TEST-LOG.md): marked "unverified" where it matters.
+// confirmed on a live host: marked "unverified" where it matters.
 package lifecycle
 
 // Row is one message of a host chat snapshot, with every field optional.
@@ -76,7 +76,7 @@ type ResponseRow struct {
 	// turn's memory; the turn's other replies are.
 	Off bool
 	// Cut: the row left the front of the host chat (/cut, /del) and is kept,
-	// text and memory (user 11-08); stored, so a restart keeps it cut.
+	// text and memory; stored, so a restart keeps it cut.
 	Cut bool
 }
 

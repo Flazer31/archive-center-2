@@ -15,10 +15,9 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// Preprocessing (1.0 E01~E03, plan 20261107-ac2-preprocessing/PLAN-01.md
-// revision 4). A mode chooses among the records Go ranked; every record
+// Preprocessing (1.0 E01~E03). A mode chooses among the records Go ranked; every record
 // stays the stored original and Go renders the choice
-// (store.DeliveryRequest.Only). Measured on 21 scenes (Sol judge, 11-07):
+// (store.DeliveryRequest.Only). Measured on 21 scenes:
 //   - JEV (GXW): the decision model is asked of every line of the wide list
 //     (the same ranking with no ceiling) whether it is unrelated to the
 //     scene, the basic delivery's lines in a request of their own; lines of the basic delivery at 0.5 or more are left out, lines
@@ -41,6 +40,10 @@ const prepWide = 10000000
 // prepParallel is the most decision requests sent at once.
 const prepParallel = 4
 
+// decisionTurns is how many of the window's latest turns the decision
+// model reads (1.1 C1).
+const decisionTurns = 2
+
 const prepUnrelatedYes = "지금 장면과 관계가 없다: 지금 장면의 인물·장소·진행 중인 일과 이어지지 않는 다른 일·다른 장소·끝난 다른 사건이다"
 const prepUnrelatedNo = "지금 장면과 이어진다: 지금 장면의 인물·장소·진행 중인 일, 또는 이 장면이 떠올리게 하는 지난 일과 관련 있다"
 const prepQuestion = "아래 기억이 지금 장면과 관계없는 다른 일인가?\n기억: "
@@ -62,8 +65,8 @@ type prepDeps struct {
 }
 
 // prepFor reads the saved mode and builds its connections (nil = off). A
-// failed read is told apart from off (review 18 B-04): the basic delivery
-// goes and the delivery's record says why.
+// failed read is told apart from off: the basic delivery goes and the
+// delivery's record says why.
 func (m *models) prepFor() (*prepDeps, string) {
 	if m == nil || m.db == nil {
 		return nil, ""
@@ -97,7 +100,7 @@ func (m *models) prepFor() (*prepDeps, string) {
 			m.mu.RUnlock()
 			cfg, _ = m.critic(saved)
 		}
-		// the key and the story go only to the address set (review 18 A-01)
+		// the key and the story go only to the address set
 		cfg.NoRedirect = true
 		if cfg.Provider == "" {
 			p.aiProblem = "ai_off"
@@ -133,7 +136,7 @@ func prepState(input string, scope []memory.ScopedTurn, window int) string {
 }
 
 // deliveryLines are a delivery's rendered record lines, by id, as Go
-// rendered each record (one record may hold line breaks; review 18 B-02).
+// rendered each record (one record may hold line breaks).
 func deliveryLines(d store.Delivery) map[string]string {
 	out := map[string]string{}
 	for i, id := range d.IDs {
@@ -293,6 +296,9 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 	ctx, cancel := context.WithTimeout(ctx, prepTimeout)
 	defer cancel()
 	state := prepState(input, scope, basic.Window)
+	// the decision model reads the input and the last decisionTurns turns
+	// of the window (1.1 C1); the AI reads the window
+	decState := prepState(input, scope, min(basic.Window, decisionTurns))
 	fail := func(code string, err error) (store.Delivery, *store.PreprocessRecord) {
 		rec.Fallback, rec.Ran = code, "go"
 		if err != nil {
@@ -340,8 +346,8 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 		var rb, rr store.PreprocessRecord
 		var wg sync.WaitGroup
 		wg.Add(2)
-		go func() { defer wg.Done(); pb, eb = askUnrelated(ctx, p.decider, state, basic.IDs, lines, &rb) }()
-		go func() { defer wg.Done(); pr, er = askUnrelated(ctx, p.decider, state, rest, lines, &rr) }()
+		go func() { defer wg.Done(); pb, eb = askUnrelated(ctx, p.decider, decState, basic.IDs, lines, &rb) }()
+		go func() { defer wg.Done(); pr, er = askUnrelated(ctx, p.decider, decState, rest, lines, &rr) }()
 		wg.Wait()
 		rec.Asked, rec.DecisionCalls, rec.DecisionRejected, rec.InputTokens = rb.Asked+rr.Asked, rb.DecisionCalls+rr.DecisionCalls, rb.DecisionRejected+rr.DecisionRejected, rb.InputTokens+rr.InputTokens
 		p0 = map[string]float64{}
@@ -393,7 +399,7 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 			go func() {
 				defer wg.Done()
 				var r store.PreprocessRecord
-				p0, decErr = askUnrelated(ctx, p.decider, state, basic.IDs, lines, &r)
+				p0, decErr = askUnrelated(ctx, p.decider, decState, basic.IDs, lines, &r)
 				rec.Asked, rec.DecisionCalls, rec.DecisionRejected, rec.InputTokens = r.Asked, r.DecisionCalls, r.DecisionRejected, r.InputTokens
 			}()
 		} else {
@@ -408,8 +414,14 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 			rec.Ran = store.PreprocessAIJev
 		case aiOK:
 			rec.Ran, rec.Fallback = store.PreprocessAI, "decision_failed"
+			if p.decider == nil {
+				rec.Fallback = p.decisionProblem // not set, not a failed call (1.1)
+			}
 		default:
 			rec.Ran, rec.Fallback = store.PreprocessJev, "ai_failed"
+			if p.ai == nil {
+				rec.Fallback = p.aiProblem
+			}
 		}
 		if decErr != nil && decOK {
 			rec.Error = decErr.Error()
@@ -444,7 +456,7 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 		// Go renders the final set again (a basis quoted by a record left
 		// out makes a line longer, a fact alone carries its event's
 		// protection): when an addition chosen first does not fit while a
-		// later one does, the later one is taken back (review 18 B-03)
+		// later one does, the later one is taken back
 		for round := 0; ; round++ {
 			var err error
 			if d, err = db.Deliver(scope, chosen); err != nil {

@@ -168,19 +168,22 @@ func TestWorldlineMap(t *testing.T) {
 	}
 	at := func(n int) map[string]any { return open[n-1] }
 	if at(2)["memories"].(float64) != 2 || at(6)["memories"].(float64) != 1 || at(5)["off"] != true || at(5)["memories"] != nil ||
-		at(3)["versions"].(float64) != 1 || at(4)["versions"].(float64) != 1 || at(1)["versions"] != nil || at(4)["reply"] != "고친 답 4" ||
-		at(8)["versions"] != nil || at(8)["reply"] != "답 8" || at(9)["versions"].(float64) != 1 {
+		// only the newest reply is kept: a reroll, an edit and an undone edit
+		// leave no other versions
+		at(3)["versions"] != nil || at(4)["versions"] != nil || at(1)["versions"] != nil || at(4)["reply"] != "고친 답 4" ||
+		at(8)["versions"] != nil || at(8)["reply"] != "답 8" || at(9)["versions"] != nil || at(3)["reply"] != "다시 쓴 답 3" {
 		t.Fatalf("turns: %v | %v | %v | %v | %v | %v | %v", at(2), at(3), at(4), at(5), at(6), at(8), at(9))
 	}
 
 	detail := func(n int) memAnswer {
 		return callMem(t, h, "GET", fmt.Sprintf("/worldline/turn?chat_id=A&turn=%d", n), "")
 	}
-	if d := detail(3); d.V["reply"] != "다시 쓴 답 3" || fmt.Sprint(d.V["versions"]) != "[map[kind:reroll text:답 3]]" {
-		t.Fatalf("turn 3: %s", d.Raw)
+	noVersions := func(v any) bool { return v == nil || fmt.Sprint(v) == "[]" }
+	if d := detail(3); d.V["reply"] != "다시 쓴 답 3" || !noVersions(d.V["versions"]) || strings.Contains(d.Raw, "\"답 3\"") {
+		t.Fatalf("turn 3 (the rerolled reply must be gone): %s", d.Raw)
 	}
-	if d := detail(4); fmt.Sprint(d.V["versions"]) != "[map[kind:edit text:답 4]]" {
-		t.Fatalf("turn 4: %s", d.Raw)
+	if d := detail(4); d.V["reply"] != "고친 답 4" || !noVersions(d.V["versions"]) {
+		t.Fatalf("turn 4 (the text before the edit must be gone): %s", d.Raw)
 	}
 	if d := detail(31); d.Code != 404 || d.V["code"] != "turn_not_found" {
 		t.Fatalf("turn 31: %d %s", d.Code, d.Raw)
@@ -252,8 +255,8 @@ func TestWorldlineFoldsALongChat(t *testing.T) {
 	if got, want := shape("/worldline?chat_id=B&open=42-100"), "1 fold2-39 40 41 fold42-50 "+recent(51); got != want {
 		t.Fatalf("opened\n got %s\nwant %s", got, want)
 	}
-	// one range is open at a time: opening another folds the first again,
-	// so the map stays short however far it is opened (SOL-REVIEW-STEP9-07 R07-03)
+	// one range is open at a time: opening another folds the first again, so the
+	// map stays short however far it is opened
 	var early []string
 	for i := 1; i <= 41; i++ {
 		early = append(early, fmt.Sprint(i))

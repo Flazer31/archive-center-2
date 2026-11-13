@@ -88,7 +88,9 @@ func TestA27CatchupReloadJobIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !src.Readable() || j2.ID == j1.ID || !turn.Confirmed || !turn.Responses[0].Revisions[1].Confirmed || src.Responses[0].Gen != "g2" {
+	// only the newest text is kept: the caught-up text is the row's one
+	// text, confirmed
+	if revs := turn.Responses[0].Revisions; !src.Readable() || j2.ID == j1.ID || !turn.Confirmed || len(revs) != 1 || !revs[0].Confirmed || src.Responses[0].Gen != "g2" {
 		t.Fatalf("source=%+v jobs=%d/%d turn=%+v", src, j1.ID, j2.ID, turn)
 	}
 	s.Apply(snap(lifecycle.SourceBeforeRequest, "", "같은 본문", false))

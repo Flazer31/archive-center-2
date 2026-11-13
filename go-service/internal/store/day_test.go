@@ -76,9 +76,12 @@ func TestDayDatePriorityAndLegacy(t *testing.T) {
 		{Session: "chat:dates", Turn: 2, Responses: []memory.SourceResponse{{Seq: 1, Data: "1423/05/16"}}},
 		{Session: "chat:dates", Turn: 3}, {Session: "chat:dates", Turn: 4}, {Session: "chat:dates", Turn: 5},
 	}
-	// Turn 4 was made before 0.0.4 (no passage): from there on Day is hidden
-	// (user decision 11-05), calendar dates before it stay.
-	want := []string{"clock = 1423/05/15", "body = 1423/05/16", "Day 3", "", ""}
+	// Turn 3 has no date: it goes on from turn 2's date by its day (no
+	// Day N in a chat with dates). Turn 4 was made before 0.0.4 (no
+	// passage): from there on no date is made, calendar dates before it
+	// stay.
+	want := []string{"clock = 1423/05/15", "body = 1423/05/16", "date = 1423/05/17", "", ""}
+	shown := []string{"1423/05/15", "1423/05/16", "1423/05/17", "", ""} // yyyy/mm/dd
 	for i, delta := range []string{"9", "2", "1", "7", `{"bad":true}`} {
 		j := daySave(t, db, sources[i], delta, fmt.Sprint(i))
 		if i == 3 {
@@ -100,7 +103,7 @@ func TestDayDatePriorityAndLegacy(t *testing.T) {
 		line := deliveryLine(m, nil, "", nil)
 		stamp := fmt.Sprintf("(T%d", m.Turn)
 		if want[i] != "" {
-			stamp += ", " + want[i]
+			stamp += ", " + shown[i]
 		}
 		if !strings.Contains(line, stamp+")") {
 			t.Fatalf("delivery %q lacks %q", line, stamp+")")
@@ -254,8 +257,8 @@ func TestDayBranchAndCopy(t *testing.T) {
 	dayKnown(t, db, memory.Own(to), map[string]string{"legacy copy": "", "new copy": ""})
 }
 
-// A chat begun before 0.0.4 shows no Day for its new turns until the old
-// turns are made again; remaking them brings the Day back (user decision 11-05).
+// A chat begun before 0.0.4 shows no Day for its new turns until the old turns
+// are made again; remaking them brings the Day back.
 func TestDayHiddenAfterLegacyUntilRemade(t *testing.T) {
 	db := testDB(t)
 	s := u2Session(t, db, "chat:legacy-hide", "old first", "new second", "new third")
@@ -374,5 +377,102 @@ func TestDayLargeCumulativeTotal(t *testing.T) {
 	want := new(big.Int).Mul(big.NewInt(maximum), big.NewInt(2))
 	if k.Memories[0].Date != "Day 0" || k.Memories[2].Date != "Day "+want.String() {
 		t.Fatalf("large cumulative dates %+v", k.Memories)
+	}
+}
+
+// A chat counted in Days until a date appears: the turns before the date
+// keep their Day count, the dated turn shows its date, and the turns
+// after it go on from that date by the days that passed.
+func TestDayCountThenDateAppears(t *testing.T) {
+	db := testDB(t)
+	sources := []memory.Source{
+		{Session: "chat:later", Turn: 1}, {Session: "chat:later", Turn: 2},
+		{Session: "chat:later", Turn: 3, Dates: map[string]string{"clock": "1423/05/15"}},
+		{Session: "chat:later", Turn: 4}, {Session: "chat:later", Turn: 5},
+	}
+	for i, delta := range []string{"0", "2", "1", "3", "0"} {
+		daySave(t, db, sources[i], delta, fmt.Sprint(i))
+	}
+	k, err := db.KnownFor(sources)
+	if err != nil || len(k.Memories) != 5 {
+		t.Fatalf("known %+v %v", k, err)
+	}
+	want := []string{"Day 0", "Day 2", "clock = 1423/05/15", "date = 1423/05/18", "date = 1423/05/18"}
+	for i, m := range k.Memories {
+		if m.Date != want[i] {
+			t.Fatalf("turn %d date %q want %q", m.Turn, m.Date, want[i])
+		}
+	}
+}
+
+// The day a date goes on from: a short year is read as the chat writes
+// it; a turn holding different dates names no one day, so the turn after
+// it is not dated from either (its Day count stays); an amount of days
+// past the bound makes no date.
+func TestCarriedDateBase(t *testing.T) {
+	db := testDB(t)
+	run := func(chat string, dates []map[string]string, deltas []string, want []string) {
+		t.Helper()
+		var sources []memory.Source
+		for i, d := range dates {
+			sources = append(sources, memory.Source{Session: "chat:" + chat, Turn: i + 1, Dates: d})
+		}
+		for i, delta := range deltas {
+			daySave(t, db, sources[i], delta, fmt.Sprint(i))
+		}
+		k, err := db.KnownFor(sources)
+		if err != nil || len(k.Memories) != len(want) {
+			t.Fatalf("%s: known %+v %v", chat, k, err)
+		}
+		for i, m := range k.Memories {
+			if m.Date != want[i] {
+				t.Fatalf("%s: turn %d date %q want %q", chat, m.Turn, m.Date, want[i])
+			}
+		}
+	}
+	run("short", []map[string]string{{"clock": "923/5/15"}, nil}, []string{"0", "1"},
+		[]string{"clock = 923/5/15", "date = 923/05/16"})
+	run("two", []map[string]string{{"birthday": "1400/03/01", "now": "1423/05/15"}, nil}, []string{"0", "1"},
+		[]string{"birthday = 1400/03/01; now = 1423/05/15", "Day 1"})
+	run("same", []map[string]string{{"a": "1423/5/15", "b": "1423-05-15"}, nil}, []string{"0", "2"},
+		[]string{"a = 1423/5/15; b = 1423-05-15", "date = 1423/05/17"})
+	run("far", []map[string]string{{"clock": "1423/05/15"}, nil}, []string{"0", "20000000"},
+		[]string{"clock = 1423/05/15", "Day 20000000"})
+}
+
+// The date the critic read in a turn's text ("story_date") dates a turn no
+// variable or numeric text dates; a chat variable comes first; a day that
+// does not exist is not kept; an undated turn goes on from it.
+func TestCriticStoryDate(t *testing.T) {
+	db := testDB(t)
+	sources := []memory.Source{
+		{Session: "chat:critic", Turn: 1}, {Session: "chat:critic", Turn: 2},
+		{Session: "chat:critic", Turn: 3, Dates: map[string]string{"clock": "1423/06/01"}},
+		{Session: "chat:critic", Turn: 4},
+	}
+	for i, raw := range []string{
+		`{"elapsed_days":0,"story_date":"1423/05/15","memories":[{"kind":"event","body":"0"}]}`,
+		`{"elapsed_days":1,"memories":[{"kind":"event","body":"1"}]}`,
+		`{"elapsed_days":2,"story_date":"1400/01/01","memories":[{"kind":"event","body":"2"}]}`,
+		`{"elapsed_days":3,"story_date":"1423/02/30","memories":[{"kind":"event","body":"3"}]}`,
+	} {
+		out, notes := memory.Parse(raw)
+		j, err := db.JobFor(sources[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.SaveGeneration(j, Generation{Output: out, Response: raw, Notes: notes}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	k, err := db.KnownFor(sources)
+	if err != nil || len(k.Memories) != 4 {
+		t.Fatalf("known %+v %v", k, err)
+	}
+	want := []string{"story = 1423/05/15", "date = 1423/05/16", "clock = 1423/06/01", "date = 1423/06/04"}
+	for i, m := range k.Memories {
+		if m.Date != want[i] {
+			t.Fatalf("turn %d date %q want %q", m.Turn, m.Date, want[i])
+		}
 	}
 }

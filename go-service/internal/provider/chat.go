@@ -28,8 +28,8 @@ type Config struct {
 	Key       string // Vertex AI: the service account JSON
 	Reasoning string // "" (the provider's default) or one of the provider's Info.Reasoning
 	// NoRedirect: a redirect is not followed, so the key and the text go
-	// only to the address set (preprocessing, review 18 A-01); a 3xx is a
-	// failure. Off for the critic, as before.
+	// only to the address set (preprocessing); a 3xx is a failure. Off
+	// for the critic, as before.
 	NoRedirect bool
 }
 
@@ -302,7 +302,7 @@ func doJSONClient(ctx context.Context, client *http.Client, url string, headers 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
-		return 0, nil, errors.New(scrub(err.Error(), secrets...)) // the address can hold a key (review 18 A-02)
+		return 0, nil, errors.New(scrub(err.Error(), secrets...)) // the address can hold a key
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -316,7 +316,7 @@ func doJSONClient(ctx context.Context, client *http.Client, url string, headers 
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 64<<20))
 	if err != nil {
-		return res.StatusCode, nil, errors.New(scrub(err.Error(), secrets...)) // review 16 A-01
+		return res.StatusCode, nil, errors.New(scrub(err.Error(), secrets...))
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return res.StatusCode, raw, fmt.Errorf("provider %d: %s", res.StatusCode, truncate(scrub(string(raw), secrets...), 8000))
@@ -367,7 +367,7 @@ func credentials(headers map[string]string) []string {
 		case "authorization":
 			out = append(out, strings.TrimPrefix(v, "Bearer "), v)
 		// headers that only say what the request is carry no credential; any
-		// other header, a user's extra one included, may (review 22 A-1)
+		// other header, a user's extra one included, may
 		case "content-type", "accept", "anthropic-version", "anthropic-beta", "user-agent":
 		default:
 			out = append(out, v)

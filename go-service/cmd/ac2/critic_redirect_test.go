@@ -13,8 +13,7 @@ import (
 
 // The critic's connection (memory generation, and the AI preprocessing
 // borrows it) does not follow a redirect: the key and the story go only to
-// the address set (user 11-08 "평론가도 막기"). Both the saved connection
-// and the flags.
+// the address set. Both the saved connection and the flags.
 func TestCriticDoesNotFollowRedirect(t *testing.T) {
 	calls := 0
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

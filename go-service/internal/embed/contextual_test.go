@@ -99,8 +99,7 @@ func TestContextualModelEmbedsATurnAsOneGroup(t *testing.T) {
 
 // The same memory text in two turns gets a vector for each turn; each turn
 // is its own request (several turns together can pass a request's limit
-// though each fits, ASTRA-RECHECK-71), and a turn already embedded is left
-// out.
+// though each fits), and a turn already embedded is left out.
 func TestContextualVectorsFollowTheirTurn(t *testing.T) {
 	db := testDB(t)
 	f := &fakeContext{}
@@ -130,7 +129,7 @@ func TestContextualVectorsFollowTheirTurn(t *testing.T) {
 }
 
 // changedStore reads a turn's memories with one of them changed, as a
-// later reading of the same turn could (ASTRA-RECHECK-71 2).
+// later reading of the same turn could.
 type changedStore struct {
 	*store.DB
 	body string

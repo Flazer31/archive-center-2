@@ -39,10 +39,10 @@ func (m *hypaModel) calls() []string {
 	return append([]string(nil), m.prompts...)
 }
 
-// E12 (user 11-07: every summary, duplicates or not, when the button is
-// pressed): the summaries become the turns of their own stored chat, made
-// by the cold start and attached before the chat's own turns, ahead of a
-// chat attached already; importing again makes only the summaries not made.
+// E12 (every summary, duplicates or not, when the button is pressed): the
+// summaries become the turns of their own stored chat, made by the cold
+// start and attached before the chat's own turns, ahead of a chat attached
+// already; importing again makes only the summaries not made.
 func TestHypaImport(t *testing.T) {
 	db := modelsDB(t)
 	p := pipeline.New(db)
@@ -89,7 +89,7 @@ func TestHypaImport(t *testing.T) {
 		t.Fatalf("501 summaries: %d %s", a.Code, a.Raw)
 	}
 
-	// a repeated text is imported twice (no condition, user 11-07)
+	// a repeated text is imported twice (no condition)
 	first := `{"chat_id":"X","chat_name":"모험","summaries":[{"text":"리나가 용을 만났다","important":true,"tags":["용"," "],"category":"사건"},{"text":"  "},{"text":"둘은 성으로 갔다"},{"text":"리나가 용을 만났다"}]`
 	if a := post(first + `,"dry_run":true}`); a.Code != 200 || a.V["summaries"].(float64) != 3 || a.V["to_make"].(float64) != 3 {
 		t.Fatalf("dry run %d %s", a.Code, a.Raw)
@@ -139,9 +139,9 @@ func TestHypaImport(t *testing.T) {
 	}
 }
 
-// Review 15: summaries imported again in a new order are read in that
-// order, the memories kept (#1); a summary whose marks alone changed is
-// counted as one to make, as the cold start makes it again (#3).
+// Summaries imported again in a new order are read in that order, the
+// memories kept (#1); a summary whose marks alone changed is counted as
+// one to make, as the cold start makes it again (#3).
 func TestHypaImportReview15(t *testing.T) {
 	db := modelsDB(t)
 	p := pipeline.New(db)
@@ -205,8 +205,8 @@ func TestHypaImportReview15(t *testing.T) {
 	if len(a.V["turns"].([]any)) != 1 || a.V["to_make"].(float64) != 1 {
 		t.Fatalf("marks changed: %s", a.Raw)
 	}
-	// the call starts before its result is saved (review 16): wait for the
-	// made turn, as the preview counts it, not for the call
+	// the call starts before its result is saved: wait for the made turn,
+	// as the preview counts it, not for the call
 	preview := `{"chat_id":"X","dry_run":true,"summaries":[{"text":"가장 이른 사건","important":true,"tags":["용"]},{"text":"두 번째 사건"},{"text":"첫 번째 사건"}]}`
 	u3Wait(t, func() bool { return len(m.calls()) == 4 && post(preview).V["to_make"].(float64) == 0 })
 	if len(m.calls()) != 4 {

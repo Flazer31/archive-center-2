@@ -1,6 +1,6 @@
 package store
 
-// memorySchema holds the generated memory (AC2-GEN-ITEMS-V2.md). Every row a
+// memorySchema holds the generated memory. Every row a
 // generation job adds carries its job_id: a job belongs to one turn read at
 // one source (input texts + response revisions), so when a reroll or an edit
 // changes the turn's source, that job's contributions drop out of current
@@ -55,6 +55,8 @@ var memorySchema = []string{
 		KEY by_turn (session_key, turn_id)
 	) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`,
 	`ALTER TABLE gen_jobs ADD COLUMN IF NOT EXISTS elapsed_days BIGINT NULL`,
+	// the critic's reading of the turn's date (1.1)
+	`ALTER TABLE gen_jobs ADD COLUMN IF NOT EXISTS story_date VARCHAR(32) NULL`,
 	`CREATE TABLE IF NOT EXISTS names (
 		id BIGINT AUTO_INCREMENT PRIMARY KEY,
 		session_key VARCHAR(191) NOT NULL,
@@ -173,7 +175,7 @@ var memorySchema = []string{
 	`ALTER TABLE memories ADD COLUMN IF NOT EXISTS hold VARCHAR(8) NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS detail_target ON awareness (target(64), id)`,
 	// document vectors by model and document text (embeddings.go): each
-	// model's dimension, the vectors in a VECTOR(<dim>) table per dimension.
+	// model's dimension, the vectors (float32 bytes) in a table per dimension.
 	// The same text is embedded once; a vector stays when its memory leaves
 	// current reads (search filters by current jobs). Losing them loses no
 	// memory.
@@ -201,6 +203,9 @@ var memorySchema = []string{
 		created_at DATETIME(6) NOT NULL,
 		PRIMARY KEY (session_key, turn_id)
 	) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`,
+	// the turn's text a grant asks for (1.1, 11-13): made, the grant goes;
+	// the turn made as an older text (a run from before an edit) leaves it
+	`ALTER TABLE gen_grants ADD COLUMN IF NOT EXISTS source_key VARCHAR(64) NULL`,
 	// which persistent id each new item of a job's parsed answer got (the
 	// array and the item's place in it), so a later re-read of the same
 	// stored answer can give a changed item its existing id

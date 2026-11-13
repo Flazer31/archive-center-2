@@ -9,9 +9,8 @@ import (
 	"archivecenter2/goservice/internal/secret"
 )
 
-// Preprocessing modes (1.0 E01~E03, user 11-07 "유저 선택은 AI + JEV, AI,
-// JEV, 사용안함으로 선택할 수 있게 해야해."): what chooses among the
-// records Go ranked. "" is off (the Go basic delivery, the default).
+// Preprocessing modes (1.0 E01~E03): what chooses among the records
+// Go ranked. "" is off (the Go basic delivery, the default).
 const (
 	PreprocessOff   = ""
 	PreprocessAI    = "ai"     // AI: the AI removes unrelated lines of the basic delivery (AX)
@@ -25,9 +24,9 @@ var PreprocessModes = []string{PreprocessAIJev, PreprocessAI, PreprocessJev, Pre
 // ErrPreprocessMode is SetPreprocessSettings' answer to an unknown mode.
 var ErrPreprocessMode = errors.New("unknown preprocessing mode")
 
-// PreprocessSettings is the preprocessing choice and its AI connection
-// (user 11-07 "따로 설정 + 평론가 빌려쓰기"): by default the AI is the
-// critic's connection; AIOwn uses the one saved here. The key is sealed.
+// PreprocessSettings is the preprocessing choice and its AI connection:
+// by default the AI is the critic's connection; AIOwn uses the one saved
+// here. The key is sealed.
 type PreprocessSettings struct {
 	Mode  string
 	AIOwn bool

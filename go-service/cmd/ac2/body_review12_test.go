@@ -18,8 +18,8 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// Regressions of cross-review 12 (Sol, 2026-11-07), turned from its
-// reproductions into the behavior they should have.
+// Regressions, turned from their reproductions into the behavior they
+// should have.
 
 func r12Load(t *testing.T, p *pipeline.Pipeline, chat string, seq int) *lifecycle.Session {
 	t.Helper()

@@ -25,15 +25,15 @@ var patterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(https?://)[^/\s:@]+:[^/\s@]+@`),
 	regexp.MustCompile(`[^\s"':]+:[^\r\n]+@(?:tcp|unix)\([^)]*\)`),
 	// a key starts a word: "task-queue-12345678" and "disk-usage-report" in a
-	// path are not keys (user 11-10: only credentials are masked)
+	// path are not keys (only credentials are masked)
 	regexp.MustCompile(`(^|[^A-Za-z0-9])(?:ac2-(?:[a-z2-7]{6}-){3}[a-z2-7]{6}|sk-[A-Za-z0-9_-]{8,}|AIza[A-Za-z0-9_-]{20,})`),
 	regexp.MustCompile(`(?i)(IDENTIFIED\s+BY\s+['"])[^'"]*`),
 }
 
 // narrowDSN is a DSN whose password has no space or "@": only the password
-// is masked, so the error around it (user, address, cause) stays readable
-// (review 22 B-2). A DSN the narrow form does not cover falls to the broad
-// pattern above (a password may hold spaces, colons and @).
+// is masked, so the error around it (user, address, cause) stays readable.
+// A DSN the narrow form does not cover falls to the broad pattern above (a
+// password may hold spaces, colons and @).
 var narrowDSN = regexp.MustCompile(`(^|[\s"'=(])([^\s"':@]+):[^\s@]+@((?:tcp|unix)\([^)]*\))`)
 
 var quotedCredential = regexp.MustCompile(`(?i)((?:api[_ -]?key|access[_ -]?token|authorization|[a-z_]*password|passwd|secret|token)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')`)
@@ -41,10 +41,9 @@ var quotedCredential = regexp.MustCompile(`(?i)((?:api[_ -]?key|access[_ -]?toke
 var logRecordStart = regexp.MustCompile(`^\d{4}[/-]\d{2}[/-]\d{2}[ T]\s*\d{1,2}:\d{2}:\d{2}`)
 
 // ErrorSummary is the error as it was, for the user to read in the HUD,
-// status, logs and the diagnostic report (user 11-08: "이렇게 막혀있는
-// 것들은 다 풀어서 볼 수 있게 해줘"). Only credential values (API keys,
-// tokens, passwords, DSN credentials) are masked; very long text is cut at
-// ErrorLimit characters.
+// status, logs and the diagnostic report.
+// Only credential values (API keys, tokens, passwords, DSN credentials)
+// are masked; very long text is cut at ErrorLimit characters.
 func ErrorSummary(text string) string {
 	text = Redact(strings.TrimSpace(text))
 	if r := []rune(text); len(r) > ErrorLimit {
@@ -80,7 +79,7 @@ func Redact(text string, secrets ...string) string {
 			text = strings.ReplaceAll(text, value, "[가림]")
 			encoded, _ := json.Marshal(value)
 			text = strings.ReplaceAll(text, string(encoded[1:len(encoded)-1]), "[가림]")
-			// as it appears in an address (review 22 A-3)
+			// as it appears in an address
 			for _, e := range []string{url.QueryEscape(value), url.PathEscape(value)} {
 				if e != value {
 					text = strings.ReplaceAll(text, e, "[가림]")

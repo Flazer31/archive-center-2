@@ -12,7 +12,7 @@ import (
 // temporary-id resolution, the stored detail and the reference index.
 func TestToSeveralStored(t *testing.T) {
 	db := testDB(t)
-	j, it, notes := a24Save(t, db, turnSource(twoTurnSession(), 0), `{"entities":[{"id":"n1","name":"세인"},{"id":"n2","name":"모몬"}],
+	j, it, notes := a24Save(t, db, turnSource(twoTurnSession(), 0), `{"entities":[{"id":"n1","name":"태오"},{"id":"n2","name":"하진"}],
  "memories":[{"id":"m1","kind":"fact","about":"n1","mode":"공동 목표","body":"함께 마을을 지킨다","to":["n1","n2"]}]}`)
 	if len(it.Memories) != 1 || len(it.Names) != 2 {
 		t.Fatalf("rows %+v notes %v", it, notes)
@@ -21,7 +21,7 @@ func TestToSeveralStored(t *testing.T) {
 	for _, n := range it.Names {
 		ids[n.Name] = n.ID
 	}
-	want := memory.Who{ids["세인"], ids["모몬"]}
+	want := memory.Who{ids["태오"], ids["하진"]}
 	if got := it.Memories[0].To; !reflect.DeepEqual(got, want) {
 		t.Fatalf("to stored as %v, want %v (notes %v)", got, want, notes)
 	}

@@ -1,22 +1,28 @@
 package store
 
 import (
-	"math"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 )
 
 func TestMariaDBMinimumVersion(t *testing.T) {
-	for _, version := range []string{"10.11.14-MariaDB", "11.4.10-MariaDB", "11.7.2-MariaDB", "9.8.1", "", "unknown"} {
+	for _, version := range []string{"10.5.27-MariaDB", "10.6.8-MariaDB", "10.6.17-MariaDB", "10.6", "10.11.7-MariaDB", "11.3.2-MariaDB", "11.4.1-MariaDB", "11.5.1-MariaDB", "10.4.34-MariaDB", "9.8.1", "", "unknown"} {
 		t.Run(version, func(t *testing.T) {
 			err := checkMariaDBVersion(version)
-			if err == nil || !strings.Contains(err.Error(), "11.8") || !strings.Contains(err.Error(), version) {
+			if err == nil || !strings.Contains(err.Error(), MinimumMariaDB) || !strings.Contains(err.Error(), version) {
 				t.Fatalf("must report required and actual versions for %q: %v", version, err)
+			}
+			// typed, so the start window can name the version (it holds no credentials)
+			var old VersionError
+			if !errors.As(err, &old) || old.Version != version {
+				t.Fatalf("not a VersionError for %q: %v", version, err)
 			}
 		})
 	}
-	for _, version := range []string{"11.8.0-MariaDB", "11.8.9-MariaDB-ubu2404", "11.10.1-MariaDB", "12.0.0-MariaDB", "12.3.2-MariaDB"} {
+	// 1.1: vectors are compared in Go; the floor is each series' first release with snapshot isolation
+	for _, version := range []string{"10.6.18-MariaDB", "10.6.20-MariaDB", "10.11.8-MariaDB", "10.11.14-MariaDB-0ubuntu0.24.04.1", "11.0.6-MariaDB", "11.1.5-MariaDB", "11.2.4-MariaDB", "11.4.2-MariaDB", "11.5.2-MariaDB", "11.6.0-MariaDB", "11.8", "11.4.10-MariaDB", "11.8.9-MariaDB-ubu2404", "12.3.2-MariaDB"} {
 		t.Run(version, func(t *testing.T) {
 			if err := checkMariaDBVersion(version); err != nil {
 				t.Fatal(err)
@@ -44,30 +50,15 @@ func TestEmbeddingVectorColumnAndCosine(t *testing.T) {
 	if err := db.SaveEmbeddings("m", []string{ha, hb}, [][]float32{a, b}); err != nil {
 		t.Fatal(err)
 	}
+	// 1.1: plain bytes, compared in Go (no MariaDB vector type needed)
 	var columnType string
-	if err := db.sql.QueryRow(`SELECT column_type FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='embedding_vectors_3' AND column_name='vector'`).Scan(&columnType); err != nil || strings.ToLower(columnType) != "vector(3)" {
+	if err := db.sql.QueryRow(`SELECT column_type FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='embedding_vectors_3' AND column_name='vector'`).Scan(&columnType); err != nil || strings.ToLower(columnType) != "mediumblob" {
 		t.Fatalf("stored type %q, %v", columnType, err)
 	}
 	var indexes int
 	if err := db.sql.QueryRow(`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='embedding_vectors_3' AND index_name<>'PRIMARY'`).Scan(&indexes); err != nil || indexes != 0 {
 		t.Fatalf("unexpected vector index: %d %v", indexes, err)
 	}
-	var distance float64
-	if err := db.sql.QueryRow(`SELECT VEC_DISTANCE_COSINE(a.vector,b.vector) FROM embedding_vectors_3 a JOIN embedding_vectors_3 b ON a.model=b.model WHERE a.model=? AND a.text_hash=? AND b.text_hash=?`, "m", ha, hb).Scan(&distance); err != nil {
-		t.Fatal(err)
-	}
-	var dot, aa, bb float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		aa += float64(a[i]) * float64(a[i])
-		bb += float64(b[i]) * float64(b[i])
-	}
-	want := 1 - dot/math.Sqrt(aa*bb)
-	const tolerance = 1e-6 // MariaDB vector distance uses float32 arithmetic.
-	if math.Abs(distance-want) > tolerance {
-		t.Fatalf("SQL cosine distance %.12g, Go %.12g, tolerance %g", distance, want, tolerance)
-	}
-	t.Logf("SQL cosine distance %.12g, Go %.12g, absolute error %.12g, tolerance %g", distance, want, math.Abs(distance-want), tolerance)
 	got, ok, err := db.Embedding("m", ha)
 	if err != nil || !ok || !reflect.DeepEqual(got, a) {
 		t.Fatalf("binary readback %v %v %v", got, ok, err)

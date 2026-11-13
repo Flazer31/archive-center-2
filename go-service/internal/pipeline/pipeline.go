@@ -184,10 +184,24 @@ func (p *Pipeline) apply(snap lifecycle.Snapshot, boot string, mark int64) error
 		}
 	}
 	events := s.TakeEvents()
+	dropped := s.PrunedTexts()
 	if err := p.store.SaveSession(s, events, s.TakeRenames()); err != nil {
 		// the stored state is the last good one; reload it next time
 		delete(p.sessions, snap.SessionKey)
 		return err
+	}
+	// the bodies a reroll or an edit dropped leave the text cache too (a
+	// chat without id shares its cache key with other such chats: left)
+	if chat, ok := strings.CutPrefix(s.Key, "chat:"); ok {
+		held := s.Held()
+		for _, texts := range dropped {
+			for _, t := range texts {
+				if !held[t] {
+					p.texts.ForgetText(chat, t, held)
+				}
+			}
+		}
+		p.texts.Held(chat, held)
 	}
 	p.applied++
 	if p.Observed != nil {
@@ -215,7 +229,9 @@ func (p *Pipeline) warm(s *lifecycle.Session) {
 		for _, r := range t.Responses {
 			if strings.HasPrefix(r.Key, "c:") {
 				for _, rev := range r.Revisions {
-					p.texts.Warm(ingest.TextKey{Chat: chat, Row: r.Key}, rev.Data)
+					if rev.Data != "" { // an emptied replaced reply has no text
+						p.texts.Warm(ingest.TextKey{Chat: chat, Row: r.Key}, rev.Data)
+					}
 				}
 			}
 		}

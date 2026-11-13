@@ -12,10 +12,10 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// HUD rebuild (user 11-08: "기억 생성 실패해도 뭐 알려주는 게 없는데 HUD가
-// 왜 필요해", "다시 시도를 했을 때에도 HUD에서 알려줬으면"). A confirmed
-// turn is followed until its generation ends even when nothing is queued
-// for it at that moment; a failed call tells which try it was of how many.
+// HUD rebuild ("기억 생성 실패해도 뭐 알려주는 게 없는데 HUD가 왜 필요해", "다시 시도를 했을 때에도 HUD에서
+// 알려줬으면"). A confirmed turn is followed until its generation ends even
+// when nothing is queued for it at that moment; a failed call tells which
+// try it was of how many.
 func TestHUDFollowsConfirmedTurnUntilItEnds(t *testing.T) {
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"message": map[string]string{"content": `{"memories":[]}`}})

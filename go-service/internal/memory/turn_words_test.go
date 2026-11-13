@@ -31,7 +31,7 @@ func TestTurnCountsReadEachTextOnce(t *testing.T) {
 
 // The counts are those of searching each word in each text, also for words
 // that are prefixes or suffixes of each other and texts that repeat one
-// letter (each text is read once whatever it repeats, ASTRA-RECHECK-82).
+// letter (each text is read once whatever it repeats).
 func TestTurnCountsMatchSearchingEachWord(t *testing.T) {
 	words := []string{"aaaa", "aa", "ab", "bab", "주막", "큰주막", "막에", "𝄞음표", "é"}
 	texts := []string{

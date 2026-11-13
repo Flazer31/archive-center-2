@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// Review 22: a DSN loses only its password when the password has no space
-// (the error around it stays readable); one with spaces is masked whole; a
-// known secret is masked also as it appears in an address.
+// A DSN loses only its password when the password has no space (the error
+// around it stays readable); one with spaces is masked whole; a known
+// secret is masked also as it appears in an address.
 func TestRedactKeepsErrorAroundCredentials(t *testing.T) {
 	got := Redact("2026/11/08 12:00:00 worker: failed chat:A turn 2: Error 1045: denied for user user:private-password@tcp(127.0.0.1:3306)/db")
 	if got != "2026/11/08 12:00:00 worker: failed chat:A turn 2: Error 1045: denied for user user:[가림]@tcp(127.0.0.1:3306)/db" {

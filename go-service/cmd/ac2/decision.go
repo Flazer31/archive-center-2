@@ -14,7 +14,7 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// decisionHandler is the decision-model connection (1.0 E02, user 11-07:
+// decisionHandler is the decision-model connection (1.0 E02:
 // Jev and Ollama's Clef, Ollama in the cloud):
 //   - GET /settings/decision : the connection (key set and its last 4 only)
 //     and the services offered
@@ -38,8 +38,7 @@ func decisionHandler(db *store.DB, box *secret.Box) http.HandlerFunc {
 				model = p.DefaultModel
 			}
 		}
-		// the local Ollama is not offered (user 11-08 "전처리에서 ollama를 직접
-		// PC에서 쓰는건 없어도 괜찮을 거 같고"); a connection already saved
+		// the local Ollama is not offered; a connection already saved
 		// with it stays shown, so a save never drops it unseen
 		offered := []provider.DecisionProvider{}
 		for _, p := range provider.DecisionProviders {
@@ -91,7 +90,7 @@ func decisionHandler(db *store.DB, box *secret.Box) http.HandlerFunc {
 			case err != nil:
 				out["error"] = err.Error() // keys are masked by the provider package
 			case len(a.Yes) == 0:
-				out["error"] = "no_answer" // a reply without the test question's answer (review 16 B-01)
+				out["error"] = "no_answer" // a reply without the test question's answer
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(out)

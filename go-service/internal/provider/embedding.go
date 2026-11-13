@@ -21,7 +21,7 @@ type EmbedConfig struct {
 }
 
 // EmbedProviders are AC1's six embedding providers, in its order, and
-// Neuralwatt (its OpenAI-style /v1/embeddings, user 10-28).
+// Neuralwatt (its OpenAI-style /v1/embeddings).
 var EmbedProviders = []Info{
 	{ID: "openai", Label: "OpenAI", DefaultURL: "https://api.openai.com/v1", NeedsKey: true, DefaultModel: "text-embedding-3-small"},
 	{ID: "gemini", Label: "Gemini", DefaultURL: "https://generativelanguage.googleapis.com/v1beta", NeedsKey: true, DefaultModel: "gemini-embedding-001"},

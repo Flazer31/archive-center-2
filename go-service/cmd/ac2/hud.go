@@ -33,17 +33,17 @@ type hudTurn struct {
 	Retry        bool       `json:"retry"`
 	Off          bool       `json:"off"`
 	NextAt       *time.Time `json:"next_at"`
-	// the generation's calls (user 11-08: a retry is told on the HUD too):
-	// Attempt is the call being made or the last one made, of Attempts
-	// allowed; Retried says this turn is being tried again (by the user or
-	// after a failed call)
+	// the generation's calls (a retry is told on the HUD too): Attempt is
+	// the call being made or the last one made, of Attempts allowed;
+	// Retried says this turn is being tried again (by the user or after a
+	// failed call)
 	Attempt  int  `json:"attempt"`
 	Attempts int  `json:"attempts"`
 	Retried  bool `json:"retried"`
 }
 
 // hudFailure is an earlier turn whose generation failed and is not done,
-// outside the latest two turns (review 19 B-04): told with its retry.
+// outside the latest two turns: told with its retry.
 type hudFailure struct {
 	Turn     int        `json:"turn"`
 	State    string     `json:"state"` // failed | retry_waiting | waiting (asked again)
@@ -162,7 +162,6 @@ func (h *hud) observed(s *lifecycle.Session, events []lifecycle.Event, started t
 		kept[t.ID] = v
 	}
 	// an earlier turn asked again, or running, keeps its clock until it ends
-	// (review 19 R2-B01)
 	for id, v := range c.turns {
 		if kept[id] == nil && v.held() {
 			kept[id] = v
@@ -241,7 +240,7 @@ func (h *hud) progress(p generate.Progress) {
 		}
 		switch p.Kind {
 		case "generating":
-			// a manual retry stays told while its call runs (review 19 B-03)
+			// a manual retry stays told while its call runs
 			v.generation, v.generated, v.state, v.genErr = &at, nil, "running", ""
 		case "generation_finished":
 			v.generated, v.state, v.retry, v.genErr = &at, "done", false, ""
@@ -269,8 +268,8 @@ func hudDuration(start, end *time.Time) *int64 {
 
 // generationState tells one turn's generation from its stored job and what
 // the worker reported, the same for the latest turns and the earlier
-// failures (review 19 R2-B01): state, the error summary and whether the
-// retry button is offered.
+// failures: state, the error summary and whether the retry button is
+// offered.
 func (h *hud) generationState(off bool, job store.HUDJob, v hudClock, w generate.ChatState) (string, string, bool) {
 	failed := job.State == "failed" || job.State == "unreadable"
 	switch {
@@ -280,7 +279,7 @@ func (h *hud) generationState(off bool, job store.HUDJob, v hudClock, w generate
 		return "done", "", false
 	case v.state == "running" && w.Running:
 		return "running", "", false
-	case v.retry: // asked again by the user, not yet running (review 19 B-03)
+	case v.retry: // asked again by the user, not yet running
 		return "waiting", "", false
 	case failed && job.Attempts > 0:
 		if job.Attempts <= h.worker.RetryLimit() && job.NextAt != nil {
@@ -289,7 +288,7 @@ func (h *hud) generationState(off bool, job store.HUDJob, v hudClock, w generate
 		return "failed", diagnostics.ErrorSummary(job.Reason), true
 	case v.state == "failed":
 		// the call or its saving failed and the store does not hold that
-		// failure (review 19 B-01, R2-B02): told as the worker heard it
+		// failure: told as the worker heard it
 		if w.RetryWaiting {
 			return "retry_waiting", v.genErr, true
 		}
@@ -427,7 +426,7 @@ func (h *hud) view(chat string) (map[string]any, error) {
 			if gen.State != "retry_waiting" {
 				nextAt = nil
 			}
-			// the store counts a call as it starts (review 19 B-02)
+			// the store counts a call as it starts
 			attempt := job.Attempts
 			out = append(out, hudTurn{Turn: t.ID, Stages: stages, CurrentStage: current, Injection: v.injection, IDs: v.ids, Retry: retry, Off: t.Off, NextAt: nextAt,
 				Attempt: attempt, Attempts: 1 + h.worker.RetryLimit(), Retried: v.retry || (gen.State == "running" && job.Attempts > 1)})

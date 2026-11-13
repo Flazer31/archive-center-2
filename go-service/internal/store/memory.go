@@ -28,6 +28,7 @@ type Job struct {
 	Request   string
 	ReadItems string
 	Response  string
+	Notes     string // the notes kept with the job (JSON), e.g. why its last call failed
 }
 
 // JobFor returns the active job of a source, creating it once; a resent or
@@ -42,8 +43,8 @@ func (d *DB) JobFor(src memory.Source) (Job, error) {
 	}
 	j := Job{Session: src.Session, Turn: src.Turn, SourceKey: key}
 	var next sql.NullTime
-	err := d.sql.QueryRow(`SELECT job_id, state, attempts, next_at, model, COALESCE(request,''), COALESCE(read_items,''), COALESCE(response,'') FROM gen_jobs WHERE session_key=? AND turn_id=? AND source_key=?`,
-		src.Session, src.Turn, key).Scan(&j.ID, &j.State, &j.Attempts, &next, &j.Model, &j.Request, &j.ReadItems, &j.Response)
+	err := d.sql.QueryRow(`SELECT job_id, state, attempts, next_at, model, COALESCE(request,''), COALESCE(read_items,''), COALESCE(response,''), COALESCE(notes,'') FROM gen_jobs WHERE session_key=? AND turn_id=? AND source_key=?`,
+		src.Session, src.Turn, key).Scan(&j.ID, &j.State, &j.Attempts, &next, &j.Model, &j.Request, &j.ReadItems, &j.Response, &j.Notes)
 	if next.Valid {
 		j.NextAt = next.Time
 	}
@@ -66,7 +67,10 @@ func sourceWithBodyDate(src memory.Source) memory.Source {
 	}
 	date := ""
 	read := func(text string) {
+		// numeric dates as written; else a Korean one, as numbers
 		if dates := bodyDatePattern.FindAllString(text, -1); len(dates) != 0 {
+			date = dates[len(dates)-1]
+		} else if dates := memory.KoreanDates(text); len(dates) != 0 {
 			date = dates[len(dates)-1]
 		}
 	}
@@ -158,7 +162,13 @@ func mention(m memory.Memory) bool {
 // every row carries the job. A job already done is left as it is (a resent
 // result adds nothing). References that resolve to nothing are kept as
 // written and noted, never attached to another item.
-func (d *DB) SaveGeneration(j Job, g Generation) (notes []string, err error) {
+func (d *DB) SaveGeneration(j Job, g Generation) ([]string, error) {
+	// two saves at once can deadlock (MariaDB 10.11 does where 11.8 does
+	// not); the save is one transaction, rolled back whole, so it runs again
+	return againOnConflict(func() ([]string, error) { return d.saveGeneration(j, g) })
+}
+
+func (d *DB) saveGeneration(j Job, g Generation) (notes []string, err error) {
 	tx, err := d.sql.Begin()
 	if err != nil {
 		return nil, err
@@ -404,8 +414,12 @@ func (d *DB) SaveGeneration(j Job, g Generation) (notes []string, err error) {
 	if days < 0 {
 		days = 0
 	}
-	if _, err := tx.Exec(`UPDATE gen_jobs SET state='done', model=?, request=?, read_items=?, response=?, notes=?, done_at=?, elapsed_days=? WHERE job_id=?`,
-		g.Model, g.Request, g.ReadItems, g.Response, strings.Join(notes, "\n"), time.Now().UTC(), int64(days), j.ID); err != nil {
+	var storyDate any // NULL unless the critic read a date that exists
+	if d := memory.StoryDateOf(g.Output.StoryDate); d != "" {
+		storyDate = d
+	}
+	if _, err := tx.Exec(`UPDATE gen_jobs SET state='done', model=?, request=?, read_items=?, response=?, notes=?, done_at=?, elapsed_days=?, story_date=? WHERE job_id=?`,
+		g.Model, g.Request, g.ReadItems, g.Response, strings.Join(notes, "\n"), time.Now().UTC(), int64(days), storyDate, j.ID); err != nil {
 		return nil, err
 	}
 	return notes, tx.Commit()
@@ -522,7 +536,7 @@ func (r *resolver) memory(m memory.Memory) memory.Memory {
 	}
 	if m.Basis != nil {
 		b := *m.Basis
-		b.From, b.Ref = r.ref(b.From), r.ref(b.Ref)
+		b.From, b.Ref = memory.MapSource(b.From, r.ref), r.ref(b.Ref)
 		m.Basis = &b
 	}
 	m.Awareness = r.awareness(m.Awareness)

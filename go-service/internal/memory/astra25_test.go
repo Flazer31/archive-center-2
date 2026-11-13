@@ -12,7 +12,7 @@ func TestA25ParseFinalShapeSalvage(t *testing.T) {
 	out, notes := Parse(raw)
 	t.Logf("out=%+v notes=%v", out, notes)
 	// the wrong-shaped body of m3 is left out and noted; m3 itself stays
-	// (Astra 26 F5: a bad field costs the field, not the item)
+	// (a bad field costs the field, not the item)
 	if len(out.Memories) != 2 || out.Memories[0].Body != "최종 정상" || out.Memories[1].ID != "m3" || out.Memories[1].Body != "" ||
 		!strings.Contains(strings.Join(notes, " "), "left out of an item: body") {
 		t.Fatal("final complete item replaced by draft")
@@ -114,11 +114,13 @@ func TestA25GenerationCatchupControls(t *testing.T) {
 	turn := s.ActiveTurns()[0]
 	seq := turn.Responses[0].Revisions[len(turn.Responses[0].Revisions)-1].Seq
 	s.Apply(snap(lifecycle.SourceLoad, "g2", "동일 본문", false))
-	if len(s.ActiveTurns()) != 1 || len(turn.Responses[0].Revisions) != 2 || !turn.Confirmed || !turn.Responses[0].Revisions[1].Confirmed || seq != turn.Responses[0].Revisions[1].Seq {
+	// only the newest text is kept: the caught-up text is the row's one
+	// text, confirmed; a retry of it makes no new text (same seq)
+	if len(s.ActiveTurns()) != 1 || len(turn.Responses[0].Revisions) != 1 || !turn.Confirmed || !turn.Responses[0].Revisions[0].Confirmed || seq != turn.Responses[0].Revisions[0].Seq {
 		t.Fatalf("catch-up/retry %+v", turn)
 	}
 	s.Apply(snap(lifecycle.SourceLoad, "g2", "편집 본문", false))
-	if len(turn.Responses[0].Revisions) != 3 || !turn.Confirmed || turn.Responses[0].Revisions[2].Confirmed {
+	if revs := turn.Responses[0].Revisions; len(revs) != 1 || revs[0].Data != "편집 본문" || revs[0].Seq <= seq || !turn.Confirmed || revs[0].Confirmed {
 		t.Fatal("same-generation edit changed completion contract")
 	}
 }
@@ -245,8 +247,8 @@ func TestSelectWithinLeavesOutByOrder(t *testing.T) {
 }
 
 // A record kept from someone (hide_from, unaware) is never left out, so
-// its protection stays with it however low the ceiling (Sol review 11-01,
-// P1; 11-01 scene records became removable, protected ones did not).
+// its protection stays with it however low the ceiling (11-01 scene
+// records became removable, protected ones did not).
 func TestSelectWithinKeepsProtectedRecord(t *testing.T) {
 	k := Known{Names: []KnownName{{ID: "N1", Name: "민재"}, {ID: "N2", Name: "서윤"}}, Memories: []KnownMemory{
 		{ID: "M1", Turn: 1, Memory: Memory{Kind: "event", Body: "금고 암호는 1234다"}},
@@ -270,7 +272,7 @@ func TestSelectWithinKeepsProtectedRecord(t *testing.T) {
 }
 
 // An open obligation stays under the ceiling whatever brought it: here it
-// is only recalled by a word of the turn (Sol review 11-01, P2).
+// is only recalled by a word of the turn.
 func TestSelectWithinKeepsRecalledOpenObligation(t *testing.T) {
 	k := Known{Names: []KnownName{{ID: "N2", Name: "서윤"}}, Memories: []KnownMemory{
 		{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", About: "N2", Mode: "의무", Status: "active", Body: "보라등을 돌려준다"}},
@@ -286,7 +288,7 @@ func TestSelectWithinKeepsRecalledOpenObligation(t *testing.T) {
 }
 
 // Under the ceiling after one record goes, no second one is left out: the
-// first took its awareness and name with it (Sol review 11-01, P3).
+// first took its awareness and name with it.
 func TestSelectWithinStopsWhenUnder(t *testing.T) {
 	k := Known{Names: []KnownName{{ID: "N1", Name: "민재", Turn: 1}, {ID: "N2", Name: "서윤", Turn: 1}}, Memories: []KnownMemory{
 		{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", About: "N1", Slot: "a", Body: "오래된 사실"}},
@@ -319,8 +321,8 @@ func TestSelectWithinKeepsProtectionOfReplacedValue(t *testing.T) {
 }
 
 // An event left out under the ceiling still shows its value on a line of
-// its own; that line keeps the protection of the earlier value it replaced
-// (Sol recheck 11-01, P1).
+// its own; that line keeps the protection of the earlier value it
+// replaced.
 func TestSelectWithinKeepsProtectionOfValueLine(t *testing.T) {
 	k := Known{Names: []KnownName{{ID: "N1", Name: "민재"}, {ID: "N2", Name: "서윤"}}, Memories: []KnownMemory{
 		{ID: "M1", Turn: 1, Memory: Memory{Kind: "event", Body: "기존 체력 기록", Effects: []Effect{{About: "N1", Slot: "HP", Value: "62"}}}},
@@ -342,7 +344,7 @@ func TestSelectWithinKeepsProtectionOfValueLine(t *testing.T) {
 
 // Leaving out more is not always shorter (a left-out event's values each
 // gain a turn on their own lines): when leaving out fewer fits, that is
-// taken (Sol recheck 11-01, P2).
+// taken.
 func TestSelectWithinFitsWhenMoreIsLonger(t *testing.T) {
 	var effects []Effect
 	for i := 1; i <= 10; i++ {
@@ -368,9 +370,9 @@ func TestSelectWithinFitsWhenMoreIsLonger(t *testing.T) {
 	}
 }
 
-// Sol review 11-09 F1: an event whose values on lines of their own are as
-// long as the event shown whole is not left out (leaving it out made the
-// range longer), so one record out fits where it fits.
+// An event whose values on lines of their own are as long as the event
+// shown whole is not left out (leaving it out made the range longer), so
+// one record out fits where it fits.
 func TestSelectWithinLeavesOutOnlyWhatShortens(t *testing.T) {
 	k := Known{Names: []KnownName{{ID: "N1", Name: "민재"}}, Scenes: []KnownScene{{ID: "S1", Change: "open", Turn: 1}},
 		Memories: []KnownMemory{{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", About: "N1", Body: strings.Repeat("가", 20)}}}}

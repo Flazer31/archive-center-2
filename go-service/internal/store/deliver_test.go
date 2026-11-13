@@ -222,7 +222,7 @@ func chatOf(t *testing.T, pairs [][2]string, input string) *lifecycle.Session {
 
 // The same short input in every turn stands for one turn of the request:
 // a request holding only the last pair holds one turn, and the first
-// turn's record is delivered (Sol 121 #3).
+// turn's record is delivered.
 func TestDeliverRepeatedInputWindow(t *testing.T) {
 	db := testDB(t)
 	var pairs [][2]string
@@ -241,8 +241,7 @@ func TestDeliverRepeatedInputWindow(t *testing.T) {
 }
 
 // A branch reads its parent's copied turns with the parent's turn numbers;
-// the window and recency follow the read scope's order, not the numbers
-// (Sol 121 #2).
+// the window and recency follow the read scope's order, not the numbers.
 func TestDeliverBranchPlaces(t *testing.T) {
 	db := testDB(t)
 	parent := memory.Source{Session: "chat:P", Turn: 100, Members: []memory.SourceMember{{Key: "pu", Data: "리나를 만났다"}}, Responses: []memory.SourceResponse{{Key: "pa", Data: "만남"}}}
@@ -259,7 +258,7 @@ func TestDeliverBranchPlaces(t *testing.T) {
 }
 
 // A view keeps how the person holds it: basis, confidence and whether it
-// differs from the facts (Sol 121 #6).
+// differs from the facts.
 func TestDeliverViewKeepsBasis(t *testing.T) {
 	db := testDB(t)
 	s := chatOf(t, [][2]string{{"리나가 소문을 들었다", "들음"}, {"걸었다", "길"}}, "서진이 배신자라고?")
@@ -280,7 +279,7 @@ func TestDeliverViewKeepsBasis(t *testing.T) {
 }
 
 // The delivered lines never pass the ceiling, also when names are longer
-// than the ids they replace (Sol 121 #7).
+// than the ids they replace.
 func TestDeliverLinesWithinCeiling(t *testing.T) {
 	db := testDB(t)
 	long := strings.Repeat("가", 210)
@@ -302,7 +301,7 @@ func TestDeliverLinesWithinCeiling(t *testing.T) {
 }
 
 // Two whole identical pairs in the request are two turns: the record of the
-// earlier of them is not delivered again (Sol 122).
+// earlier of them is not delivered again.
 func TestDeliverRepeatedWholePairs(t *testing.T) {
 	db := testDB(t)
 	var pairs [][2]string
@@ -322,7 +321,7 @@ func TestDeliverRepeatedWholePairs(t *testing.T) {
 
 // In a branch, an obligation the branch's own later turn fulfilled is not
 // delivered as still open, although the parent's copied turn that kept it
-// active has the higher turn number (Sol 122).
+// active has the higher turn number.
 func TestDeliverBranchStateOrder(t *testing.T) {
 	db := testDB(t)
 	parent := memory.Source{Session: "chat:P", Turn: 100, Members: []memory.SourceMember{{Key: "pu", Data: "리나가 빚을 졌다"}}, Responses: []memory.SourceResponse{{Key: "pa", Data: "빚"}}}
@@ -363,7 +362,7 @@ func TestDeliverWindowCountedFromRoles(t *testing.T) {
 }
 
 // A view whose basis is a secret record carries that record's text under
-// the secret ceiling, with who must not be told (Sol 123).
+// the secret ceiling, with who must not be told.
 func TestDeliverBasisSecret(t *testing.T) {
 	db := testDB(t)
 	s := chatOf(t, [][2]string{{"리나가 소문을 들었다", "들음"}, {"걸었다", "길"}}, "서진을 믿지 않는다고?")
@@ -388,7 +387,7 @@ func TestDeliverBasisSecret(t *testing.T) {
 	}
 }
 
-// A view based on a value an event set shows that value (Sol 123).
+// A view based on a value an event set shows that value.
 func TestDeliverBasisEffect(t *testing.T) {
 	db := testDB(t)
 	s := chatOf(t, [][2]string{{"리나가 돈을 받았다", "받음"}, {"걸었다", "길"}}, "서진이 리나 돈을 노린다고?")
@@ -403,7 +402,7 @@ func TestDeliverBasisEffect(t *testing.T) {
 }
 
 // The current input repeating the last turn's user text is not taken for
-// that earlier turn being in the request (Sol 123).
+// that earlier turn being in the request.
 func TestDeliverCurrentInputNotEarlierTurn(t *testing.T) {
 	db := testDB(t)
 	s := chatOf(t, [][2]string{{"리나는?", "알겠어"}, {"리나는?", "알겠어"}}, "리나는?")
@@ -450,7 +449,7 @@ func lineWith(block, text string) string {
 }
 
 // Protection set on an event's value (M1.1) goes with every line that
-// shows that value: the event's own line and a view based on it (Sol 124).
+// shows that value: the event's own line and a view based on it.
 func TestDeliverEffectSecret(t *testing.T) {
 	db := testDB(t)
 	s := chatOf(t, [][2]string{{"리나가 돈을 받았다", "받음"}, {"걸었다", "길"}}, "서진이 리나 돈을 노린다고?")

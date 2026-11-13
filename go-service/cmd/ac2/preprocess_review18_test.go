@@ -16,8 +16,8 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// Cross review 18 (Sol) regressions. Each scenario is the one the review
-// reproduced; the assertions are the corrected behavior.
+// Regressions. Each scenario is one once reproduced; the assertions are the
+// corrected behavior.
 
 func r18Request() store.DeliveryRequest {
 	return store.DeliveryRequest{Input: "리나의 약속과 생각", Payload: []store.TextPrint{{Role: "user"}}, Chars: 100000, Secret: 100000}

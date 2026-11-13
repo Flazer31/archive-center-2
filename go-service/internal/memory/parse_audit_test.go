@@ -135,3 +135,41 @@ func TestEmptyFinalAfterAnOpenDraft(t *testing.T) {
 		t.Errorf("basis with spaces: out %+v notes %v", out, notes)
 	}
 }
+
+// A malformed effect that still says what changed keeps its place with the
+// fields that read, so the effects after it are kept and their numbers
+// (m1.3) still point to them (1.1). One that
+// says no change once its wrong fields are out, or whose person or slot is
+// what is wrong, is still left out with the ones after it.
+func TestMalformedEffectKeepsItsPlace(t *testing.T) {
+	for _, bad := range []string{
+		`{"about":"N1","slot":["돈"],"value":"90","was":"M1"}`,  // a wrong slot: it decides what it replaces
+		`{"about":["N1"],"slot":"돈","value":"90"}`,             // a wrong person
+		`{"about":"N1","slot":"돈","value":[90],"delta":"-10"}`, // only an amount left: not shown
+	} {
+		out, notes := Parse(`{"memories":[{"id":"m1","kind":"event","body":"거래 후 이동했다","effects":[{"about":"N1","slot":"위치","value":"서울"},` + bad + `,{"about":"N1","slot":"직업","value":"상인"}]}]}`)
+		if len(out.Memories) != 1 || len(out.Memories[0].Effects) != 1 || out.Memories[0].Effects[0].Slot != "위치" {
+			t.Fatalf("%s: want the effect and the ones after it left out: %+v %v", bad, out.Memories, notes)
+		}
+	}
+	for _, bad := range []string{
+		`{"about":"N1","slot":"돈","value":"90","was":5}`,           // a wrong source
+		`{"about":"N1","slot":"돈","value":"90","status":["paid"]}`, // a wrong status
+		`{"about":"N1","slot":"돈","value":"90","delta":[-10]}`,     // a wrong amount
+	} {
+		out, notes := Parse(`{"memories":[{"id":"m1","kind":"event","body":"거래 후 이동했다","effects":[{"about":"N1","slot":"위치","value":"서울"},` + bad + `,{"about":"N1","slot":"직업","value":"상인"}]},{"id":"m2","kind":"fact","about":"N1","slot":"직업","body":"상인이 됐다","was":"m1.3"}]}`)
+		if len(out.Memories) != 2 {
+			t.Fatalf("%s: out %+v notes %v", bad, out, notes)
+		}
+		effects := out.Memories[0].Effects
+		if len(effects) != 3 || effects[0].Slot != "위치" || effects[1].Slot != "돈" || effects[1].Value != "90" || effects[2].Slot != "직업" || effects[2].Value != "상인" {
+			t.Fatalf("%s: effects %+v notes %v", bad, effects, notes)
+		}
+		if out.Memories[1].Was[0] != "m1.3" {
+			t.Fatalf("%s: the reference moved: %v", bad, out.Memories[1].Was)
+		}
+		if !strings.Contains(strings.Join(notes, " "), "effects[1].") {
+			t.Fatalf("%s: the left-out field is not named: %v", bad, notes)
+		}
+	}
+}

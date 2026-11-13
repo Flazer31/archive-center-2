@@ -20,7 +20,7 @@ func (reportProcessor) Diagnostics() map[string]any {
 	return map[string]any{"sessions": 3, "generation_runs": 2, "generation_last_error": "provider 503: private-memory-echo", "prompt": "private-prompt-marker", "chat_name": "private-chat-name", "generation_known_max": "private-type-abuse"}
 }
 
-// Since user decision 11-08 error text (last error, failures, the plugin's
+// Error text (last error, failures, the plugin's
 // recent errors) is shown as written with credentials masked; fields that are
 // not errors (prompt, chat name, raw prompt, memory) are still never exported.
 func TestDiagnosticReportProductionRouteAuthShowsErrorTextMasksCredentials(t *testing.T) {

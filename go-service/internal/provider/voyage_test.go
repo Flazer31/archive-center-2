@@ -152,7 +152,7 @@ func TestVoyageEmbedGroupsInvalidResponse(t *testing.T) {
 }
 
 // Queries go as one single-chunk group each ([[q1],[q2]], the documented
-// query shape), and come back in query order (ASTRA-RECHECK-71 3).
+// query shape), and come back in query order.
 func TestVoyageEmbedGroupsQueries(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

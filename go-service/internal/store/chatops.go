@@ -765,8 +765,13 @@ func bodyEventRefs(detail string) []string {
 	var e memory.BodyEvent
 	json.Unmarshal([]byte(detail), &e)
 	refs := append([]string{e.Who}, e.Partners...)
+	if e.Child != "" {
+		refs = append(refs, e.Child)
+	}
 	if e.Paternity != nil {
 		refs = append(refs, e.Paternity.Candidates...)
+		refs = append(refs, e.Paternity.Unaware...)
+		refs = append(refs, e.Paternity.Learns...)
 	}
 	return refs
 }
@@ -778,9 +783,12 @@ func remapBodyEvent(detail string, r *resolver) string {
 		return detail
 	}
 	e.Who, e.Partners = r.ref(e.Who), r.list(e.Partners)
+	if e.Child != "" {
+		e.Child = r.ref(e.Child)
+	}
 	if e.Paternity != nil {
 		p := *e.Paternity
-		p.Candidates = r.list(p.Candidates)
+		p.Candidates, p.Unaware, p.Learns = r.list(p.Candidates), r.list(p.Unaware), r.list(p.Learns)
 		e.Paternity = &p
 	}
 	b, _ := json.Marshal(e)

@@ -15,7 +15,7 @@ import (
 // The memory screen (step 9-4): a chat's memories, read in its read scope;
 // a memory of the chat's own turns can have its body and importance edited
 // or be deleted (as AC1). A branch reads its parent's memories as they are
-// stored, so they are read only there (user decision 10-28).
+// stored, so they are read only there.
 
 var (
 	ErrMemoryNotFound = errors.New("memory_not_found")
@@ -237,10 +237,9 @@ func (d *DB) ChatMemoriesIn(chatKey string, turns, story []memory.ScopedTurn) ([
 		v.Replaced, v.Changed = replaced[m.ID], partly[m.ID]
 		v.Hold = holds[m.ID]
 		// the types of the names the by-name view files it under: its
-		// person and the names its effects change (user 11-09: 이름별 tabs
-		// show a name's kind and its changed values)
-		// by reference, not by the name shown: two names may read the same,
-		// and a name may read like a record (review 11-09 A2, A3)
+		// person and the names its effects change (이름별 tabs show a name's
+		// kind and its changed values) by reference, not by the name shown:
+		// two names may read the same, and a name may read like a record
 		for _, ref := range append([]string{m.About, m.Owner}, effectAbouts(m.Memory)...) {
 			if _, ok := names[ref]; ok { // a name, not a record (M12) left as it is
 				if v.NameTypes == nil {

@@ -17,8 +17,7 @@ import (
 )
 
 // embedSuggestions are the models the settings screen suggests per
-// embedding provider (any model may be typed, as in AC1; Voyage's two are
-// the user's 10-24 choice).
+// embedding provider (any model may be typed, as in AC1).
 var embedSuggestions = map[string][]string{
 	"voyageai": {"voyage-context-4", "voyage-4-large"},
 	"openai":   {"text-embedding-3-small", "text-embedding-3-large"},
@@ -52,7 +51,7 @@ type models struct {
 }
 
 // signature names a connection by its provider, model and key (the key by a
-// hash): what the user decision of 10-27 calls another critic.
+// hash): what counts as another critic.
 func signature(provider, model, key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return strings.Join([]string{provider, model, hex.EncodeToString(sum[:8])}, "|")
@@ -62,7 +61,7 @@ func signature(provider, model, key string) string {
 // screen saved none), else the flags.
 func (m *models) critic(s store.ModelSettings) (provider.Config, string) {
 	// a redirect is not followed: the key and the story go only to the
-	// address set (user 11-08 "평론가도 막기", review 18 A-01)
+	// address set
 	if s.CriticSet {
 		if s.Provider == "" {
 			return provider.Config{}, "off"
@@ -105,9 +104,9 @@ func (m *models) embedding(s store.ModelSettings) (provider.EmbedConfig, string)
 
 // apply puts settings to use: at a start (saved false) as they are; for a
 // save on the settings screen (saved true) also, with another critic, the
-// turns the last one could not make get their calls again (user decision
-// 10-27), and with another embedding connection the missing vectors of
-// every chat are filled.
+// turns the last one could not make get their calls again, and with
+// another embedding connection the missing vectors of every chat are
+// filled.
 func (m *models) apply(s store.ModelSettings, saved bool) {
 	cfg, source := m.critic(s)
 	var chat provider.Chatter

@@ -146,9 +146,21 @@ func TestBodyEventsFollowTurnsAndAreDelivered(t *testing.T) {
 	}
 	// delivered in its own section inside the block, the fingerprint over all
 	var scope []memory.ScopedTurn
-	p.WithSession("chat:X", func(s *lifecycle.Session) { scope = memory.ScopeOf(s) })
-	lines, err := bodyLines(db, "chat:X", scope)
-	if all := strings.Join(lines, "|"); err != nil || len(lines) != 2 || !strings.Contains(all, "body 리나 [story fact, private]: recovering") || !strings.Contains(all, "cycle day 1 (period started Day 5)") {
+	turn := 0
+	p.WithSession("chat:X", func(s *lifecycle.Session) { scope, turn = memory.ScopeOf(s), tendencyTurnOf(s) })
+	lines, err := bodyLines(db, "chat:X", scope, turn, "")
+	// the facts, then the tendencies in their own section (1.1)
+	facts := lines
+	for i, l := range lines {
+		if l == body.TendencyHeader {
+			facts = lines[:i]
+			if i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "- body tendency 리나 ") {
+				t.Fatalf("tendency section %v", lines)
+			}
+		}
+	}
+	// with one turn in body.TendencyEvery (1.1)
+	if all := strings.Join(facts, "|"); err != nil || len(facts) != 2 || (len(facts) != len(lines)) != body.TendencyTurn(turn) || !strings.Contains(all, "body 리나 [story fact, private]: recovering") || !strings.Contains(all, "cycle day 1 (period started Day 5)") {
 		t.Fatalf("lines %v %v", lines, err)
 	}
 	d, err := db.Deliver(scope, store.DeliveryRequest{Input: "리나", Chars: 2000, Secret: 4000, Body: lines})
@@ -183,7 +195,7 @@ func TestBodyEventsFollowTurnsAndAreDelivered(t *testing.T) {
 	}
 	// switched off: no section, no rules
 	bodyCall(t, h, "POST", "/body/settings", `{}`, 200)
-	if lines, _ := bodyLines(db, "chat:X", scope); len(lines) != 0 {
+	if lines, _ := bodyLines(db, "chat:X", scope, turn, ""); len(lines) != 0 {
 		t.Fatal("off but delivered")
 	}
 }

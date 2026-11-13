@@ -174,6 +174,12 @@ func coldProgress(db *store.DB, worker *generate.Worker, key string, run *coldRu
 		}
 	}
 	cs := worker.Chat(key)
+	// waiting after a failed call (bug report 11-12: shown as running while
+	// nothing ran): the panel tells it apart, with the next call's time
+	var retryAt any
+	if cs.RetryWaiting && !cs.RetryAt.IsZero() {
+		retryAt = cs.RetryAt.UTC().Format(time.RFC3339)
+	}
 	return map[string]any{"chat": key, "total": len(turns), "done": done, "failed": failed, "waiting": waiting, "cancelled": cancelled,
-		"asked": len(grants), "running": cs.Running || cs.Waiting, "started_at": started, "failures": failures}, nil
+		"asked": len(grants), "running": cs.Running || cs.Waiting, "retry_waiting": cs.RetryWaiting, "retry_at": retryAt, "started_at": started, "failures": failures}, nil
 }

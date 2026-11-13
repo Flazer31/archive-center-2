@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// The chat list (user decisions 10-28): every chat the backend has a record
-// of, named as the host names it, most recent first.
+// The chat list: every chat the backend has a record of, named as the host
+// names it, most recent first.
 
 var chatSchema = []string{
 	// a chat's names in the host, sent by the plugin with its snapshots
@@ -251,7 +251,7 @@ func (r *chatRead) compare(p ComparePage) (ChatComparison, error) {
 	}
 	err = eachOn(r.tx, `SELECT t.turn_id,t.confirmed,t.off,
 	 COALESCE((SELECT LEFT(m.data,500) FROM turn_members m WHERE m.session_key=t.session_key AND m.turn_id=t.turn_id AND m.state='active' ORDER BY m.ord LIMIT 1),''),
-	 COALESCE((SELECT LEFT(v.data,500) FROM response_rows a JOIN revisions v ON v.session_key=a.session_key AND v.row_key=a.row_key AND v.seq=(SELECT MAX(x.seq) FROM revisions x WHERE x.session_key=a.session_key AND x.row_key=a.row_key) WHERE a.session_key=t.session_key AND a.turn_id=t.turn_id AND a.state='active' AND NOT a.off AND (a.generation_id='' OR v.generation_id='' OR a.generation_id=v.generation_id) ORDER BY a.ord LIMIT 1),'')
+	 COALESCE((SELECT LEFT(v.data,500) FROM response_rows a JOIN revisions v ON v.session_key=a.session_key AND v.row_key=a.row_key AND v.seq=(SELECT MAX(x.seq) FROM revisions x WHERE x.session_key=a.session_key AND x.row_key=a.row_key) WHERE a.session_key=t.session_key AND a.turn_id=t.turn_id AND a.state='active' AND NOT a.off AND v.data<>'' AND (a.generation_id='' OR v.generation_id='' OR a.generation_id=v.generation_id) ORDER BY a.ord LIMIT 1),'')
 	 FROM logical_turns t WHERE t.session_key=? AND t.turn_id>? AND NOT t.inactive ORDER BY t.turn_id LIMIT ?`, []any{r.chat, p.TurnAfter, p.Limit + 1}, func(rows *sql.Rows) error {
 		var id int
 		var confirmed, off bool

@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// Cross-review 03: the backend's own start must install the indented log
-// writer. A data path with a line break makes runBackend's first log record
-// span lines; its continuation must arrive indented on the real stderr.
+// The backend's own start must install the indented log writer. A data path
+// with a line break makes runBackend's first log record span lines; its
+// continuation must arrive indented on the real stderr.
 func TestRunBackendIndentsMultilineLogRecords(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=TestRunBackendLogHelper", "--")
 	cmd.Env = append(os.Environ(), "AC2_LOG_WRITER_CHILD="+t.TempDir())

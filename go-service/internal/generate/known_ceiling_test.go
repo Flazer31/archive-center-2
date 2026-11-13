@@ -34,13 +34,13 @@ func (f *lenaModel) Chat(ctx context.Context, prompt string) (provider.Result, e
 	return provider.Result{Content: fmt.Sprintf(`{"entities":[{"id":"n1","name":"리나","type":"person"}],"memories":[{"id":"m1","kind":"fact","about":"n1","body":"%s"}]}`, body)}, nil
 }
 
-// The critic setting known_chars bounds a generation call's whole request
-// (user 11-09: a tester set 3,000 and the request did not change, Beta 0.0.1
-// had left it unapplied; since 1.0.8 the ceiling is on the whole request).
-// The stored memory gets what the instructions and the turn's text leave:
-// over the ceiling whole records are left out, the oldest named fact first,
-// and under the same ceiling a longer reply leaves less; with none (0) the
-// turn reads them all.
+// The critic setting known_chars bounds a generation call's whole request (a
+// tester set 3,000 and the request did not change, Beta 0.0.1 had left it
+// unapplied; since 1.0.8 the ceiling is on the whole request). The stored
+// memory gets what the instructions and the turn's text leave: over the
+// ceiling whole records are left out, the oldest named fact first, and under
+// the same ceiling a longer reply leaves less; with none (0) the turn reads
+// them all.
 func TestKnownCharsBoundsTheGenerationPrompt(t *testing.T) {
 	third := func(t *testing.T, ceiling int, longer string) string {
 		db := testDB(t)

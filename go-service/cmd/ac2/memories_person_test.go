@@ -96,7 +96,7 @@ func TestMemoryScreenByPerson(t *testing.T) {
 		t.Fatal("the replaced fact is not listed as replaced in the fact kind")
 	}
 	// people in the listed order with counts; one person with their parts
-	// (user 11-09: a tab per person, parts folded)
+	// (a tab per person, parts folded)
 	var who []string
 	for _, p := range a.V["people"].([]any) {
 		m := p.(map[string]any)
@@ -128,9 +128,9 @@ func TestMemoryScreenByPerson(t *testing.T) {
 	}
 }
 
-// Review 13: a person whose name looks like a record (M12) is still that
-// person (#2); a fact with no mode or one outside the list stays before the
-// person's views (#3); a replaced view is counted in replaced too (#1).
+// A person whose name looks like a record (M12) is still that person (#2);
+// a fact with no mode or one outside the list stays before the person's
+// views (#3); a replaced view is counted in replaced too (#1).
 func TestMemoryScreenByPersonReview13(t *testing.T) {
 	db := modelsDB(t)
 	pipe := pipeline.New(db)
@@ -182,12 +182,12 @@ func TestMemoryScreenByPersonReview13(t *testing.T) {
 	}
 }
 
-// User 11-09: a thing keeps its record and its values carry on. The by-name
-// view gives each name its type and how many changed values it has; a name
-// with changes only has a tab before nobody's; person=<name> lists its
-// changes oldest first: a replaced fact of it, and each effect of an event
-// about it (before, value). An effect on a record (an obligation fulfilled)
-// is no name's.
+// A thing keeps its record and its values carry on. The by-name view gives
+// each name its type and how many changed values it has; a name with
+// changes only has a tab before nobody's; person=<name> lists its changes
+// oldest first: a replaced fact of it, and each effect of an event about it
+// (before, value). An effect on a record (an obligation fulfilled) is no
+// name's.
 func TestMemoryScreenByNameChanges(t *testing.T) {
 	db := modelsDB(t)
 	pipe := pipeline.New(db)
@@ -279,10 +279,10 @@ func nameRef(t *testing.T, a memAnswer, name string) string {
 	return ref
 }
 
-// Review 11-09 (Sol): a search for a name or a value only an effect holds
-// keeps that change (A1); a name that reads like a record (M1) keeps an
-// effect on the record M1 out of its changes (A2); two names that read the
-// same are two tabs, each with its own type, facts and changes (A3).
+// A search for a name or a value only an effect holds keeps that change
+// (A1); a name that reads like a record (M1) keeps an effect on the record
+// M1 out of its changes (A2); two names that read the same are two tabs,
+// each with its own type, facts and changes (A3).
 func TestMemoryScreenByNameReview1109(t *testing.T) {
 	db := modelsDB(t)
 	pipe := pipeline.New(db)

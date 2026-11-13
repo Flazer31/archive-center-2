@@ -10,7 +10,7 @@ import (
 	"archivecenter2/goservice/internal/pipeline"
 )
 
-// Astra 18 recheck counterexamples through the real store, kept as regressions.
+// Recheck counterexamples through the real store, kept as regressions.
 func TestAstra18BranchParentSurvivesRestart(t *testing.T) {
 	db := testDB(t)
 	p := pipeline.New(db)

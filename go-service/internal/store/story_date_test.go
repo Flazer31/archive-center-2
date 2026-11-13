@@ -16,14 +16,17 @@ import (
 func TestStoryDateObservedBodySavedAndDelivered(t *testing.T) {
 	db := testDB(t)
 	for _, tc := range []struct {
-		name, body, variable, want string
+		name, body, variable, want, shown string
 	}{
-		{"variable", "응답\n1423/05/14", "1423/05/15", "clock = 1423/05/15"},
-		{"slash", "응답\n1423/05/15", "", "body = 1423/05/15"},
-		{"dash", "응답\n2900-09-24", "", "body = 2900-09-24"},
-		{"dot", "응답\n2900.08.15", "", "body = 2900.08.15"},
-		{"last_date", "1423/05/14 과거 이야기\n현재 1423/05/15 13:00", "", "body = 1423/05/15 13:00"},
-		{"undated", "응답에 날짜 없음", "", ""},
+		{"variable", "응답\n1423/05/14", "1423/05/15", "clock = 1423/05/15", "1423/05/15"},
+		{"slash", "응답\n1423/05/15", "", "body = 1423/05/15", "1423/05/15"},
+		{"dash", "응답\n2900-09-24", "", "body = 2900-09-24", "2900/09/24"},
+		{"dot", "응답\n2900.08.15", "", "body = 2900.08.15", "2900/08/15"},
+		{"last_date", "1423/05/14 과거 이야기\n현재 1423/05/15 13:00", "", "body = 1423/05/15 13:00", "1423/05/15 13:00"},
+		{"undated", "응답에 날짜 없음", "", "", "Day 0"},
+		// Korean dates: a variable and the reply's text, stored as numbers
+		{"korean_variable", "응답", "1423년 5월 15일 (월)", "clock = 1423/05/15", "1423/05/15"},
+		{"korean_text", "응답\n오늘은 1423년 5월 16일이다", "", "body = 1423/05/16", "1423/05/16"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			chat := map[string]any{"chat_id": tc.name, "rows": []any{
@@ -75,7 +78,7 @@ func TestStoryDateObservedBodySavedAndDelivered(t *testing.T) {
 			d, err := db.Deliver(memory.Own(restarted), DeliveryRequest{Input: "리나", Payload: []TextPrint{{Role: "user"}}, Chars: 10000})
 			stamp := "(T1"
 			if wantDate != "" {
-				stamp += ", " + wantDate
+				stamp += ", " + tc.shown // shown as yyyy/mm/dd
 			}
 			stamp += ")"
 			if err != nil || len(d.IDs) != 1 || !strings.Contains(d.Block, stamp) {

@@ -13,12 +13,12 @@ import (
 	"archivecenter2/goservice/internal/packageupdate"
 )
 
-// Cross-review 04/05: the updater's own multi-line error (here a malformed
-// candidate whose file name spans lines) reaches a fresh startup log through
-// the real paths: run → ApplyPendingFromRunner writes one indented log record,
-// apply-pending writes its JSON failure result. The report keeps the record
-// and the failure code, and since 11-08 also the error's own text (the
-// continuation stays indented inside the one record).
+// The updater's own multi-line error (here a malformed candidate whose file
+// name spans lines) reaches a fresh startup log through the real paths: run →
+// ApplyPendingFromRunner writes one indented log record, apply-pending writes
+// its JSON failure result. The report keeps the record and the failure code,
+// and since 11-08 also the error's own text (the continuation stays indented
+// inside the one record).
 func TestUpdaterApplyErrorStaysOneRecordWithFullText(t *testing.T) {
 	for _, action := range []string{"run", "apply-pending"} {
 		t.Run(action, func(t *testing.T) { updaterApplyError(t, action) })

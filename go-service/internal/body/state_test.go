@@ -1,6 +1,9 @@
 package body
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func day(n int) Day { return Day{"day", n} }
 
@@ -79,7 +82,7 @@ func TestAssessModeledPregnancy(t *testing.T) {
 	}
 	recs := []Record{{ID: 1, Kind: "period_start", Day: day(0)}, {ID: 2, Kind: "conception_exposure", Day: day(day0), Exposure: in, Partners: []string{"N2"}}}
 	st, _, frozen := Assess(on, seed, p, recs, day(x.ImplantationDay+1))
-	if got := frozen[2]; got != x {
+	if got := frozen[2]; !reflect.DeepEqual(got, x) {
 		t.Fatalf("frozen %+v want %+v", got, x)
 	}
 	if st.Pregnancy == nil || st.Pregnancy.Observed || st.Pregnancy.Stage != "modeled_implanted_pregnancy" || st.Pregnancy.Paternity != "modeled_link" || st.Cycle != nil {

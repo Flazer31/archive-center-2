@@ -16,11 +16,10 @@ import (
 	"archivecenter2/goservice/internal/provider"
 )
 
-// Cross-review 01 (R01, R03): real provider clients against a loopback
+// Real provider clients against a loopback
 // server; the only replaced boundary is the upstream HTTP service.
 //
-// Since user decision 11-08 ("이렇게 막혀있는 것들은 다 풀어서 볼 수 있게
-// 해줘") the report shows error text as written; only credential values are
+// The report shows error text as written; only credential values are
 // masked. privateMark is ordinary prose that must now be visible;
 // credentialMark is key-shaped and must stay masked.
 const privateMark = "SYNTHETIC_PRIVATE_CONVERSATION"
@@ -102,10 +101,10 @@ func TestOllamaJSONErrorKeepsHTTPStatusAndBody(t *testing.T) {
 	}
 }
 
-// Cross-review 02 (R01 residual): any multi-line error, e.g. a database error
+// Any multi-line error, e.g. a database error
 // quoting user text, stays inside its record when written through the
 // backend's log writer, so the report reader cannot take a quoted line as a
-// new record. Since 11-08 the quoted text is shown, credentials masked.
+// new record. The quoted text is shown, credentials masked.
 func TestIndentedLogKeepsAnyMultilineErrorInsideItsRecordAndShowsIt(t *testing.T) {
 	var buf bytes.Buffer
 	logger := log.New(IndentedLog(&buf), "", log.LstdFlags)
@@ -127,7 +126,7 @@ func TestIndentedLogKeepsAnyMultilineErrorInsideItsRecordAndShowsIt(t *testing.T
 	}
 }
 
-// Cross-review 05 (changed 11-08): whichever log site wrote it, an indented
+// Whichever log site wrote it, an indented
 // continuation and a JSON failure result's message are kept as written;
 // credentials inside them are masked.
 func TestReportKeepsContinuationAndFailureResultMessagesMasksCredentials(t *testing.T) {
@@ -149,13 +148,13 @@ func TestReportKeepsContinuationAndFailureResultMessagesMasksCredentials(t *test
 	}
 }
 
-// Cross-review 07 (changed 11-08): bin/start.ps1 writes a caught exception as
-// one "시작 오류:" record (line breaks folded); the report keeps the record
-// with the exception's own text, credentials masked.
+// bin/start.ps1 writes a caught exception as
+// one "시작 오류:" record (line breaks folded); the report keeps the record with
+// the exception's own text, credentials masked.
 func TestReportKeepsStartScriptExceptionText(t *testing.T) {
 	log := "[시작] 업데이트 도구 준비\n오류: 업데이트 도구 준비에서 멈췄습니다. 종료 코드: 1\n" +
 		`시작 오류: Invalid object passed in. (39): {"note":"` + privateMark + `", [시작] quoted }` + "\n" +
-		// review 08: another record label quoted inside the error text
+		// another record label quoted inside the error text
 		"[시작] 업데이트 도구 준비\n" +
 		`시작 오류: bad JSON {"note":"` + privateMark + ` memory transport: quoted-error","api_key":"` + credentialMark + `"}` + "\n" +
 		"실행 파일이 없거나 열리지 않으면 압축을 모두 풀었는지 확인해 주세요.\n"

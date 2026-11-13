@@ -52,7 +52,7 @@ type wlVersion struct {
 //     worldlineRecent turns, the turns where a branch splits and one opened
 //     range (its newest worldlineOpenMax turns) are turns; the rest is folded
 //     into ranges, so a long chat stays a short map however far it is opened
-//     (user decision 10-28, for the browser's memory).
+//     (for the browser's memory).
 //   - GET /worldline/turn?chat_id=&turn= : one turn's texts and its other
 //     versions.
 //
@@ -209,9 +209,9 @@ func forkPlace(s *lifecycle.Session, row string) int {
 }
 
 // turnTexts are a turn's input and current reply as the host holds them,
-// and the reply's other versions: the replies a reroll replaced and the
-// earlier texts of a reply (an edit, or a reroll in the same row), each
-// text once.
+// and the reply's other versions still stored: since 1.1 only the newest
+// reply text is kept, so these are texts kept from before 1.1 (a reroll's
+// replaced reply, a reply's earlier text), each text once.
 func turnTexts(t *lifecycle.Turn) (user, reply string, others []wlVersion) {
 	var in, out []string
 	for _, m := range t.Members {
@@ -221,7 +221,8 @@ func turnTexts(t *lifecycle.Turn) (user, reply string, others []wlVersion) {
 	}
 	seen := map[string]bool{}
 	for _, r := range t.Responses {
-		if r.State == lifecycle.Active && len(r.Revisions) > 0 {
+		// a blank text is an emptied reply's marker, not a reply
+		if r.State == lifecycle.Active && len(r.Revisions) > 0 && r.Revisions[len(r.Revisions)-1].Data != "" {
 			cur := r.Revisions[len(r.Revisions)-1].Data
 			out = append(out, cur)
 			seen[cur] = true
@@ -233,7 +234,9 @@ func turnTexts(t *lifecycle.Turn) (user, reply string, others []wlVersion) {
 		}
 		n := len(r.Revisions)
 		for j, rev := range r.Revisions {
-			if (r.State == lifecycle.Active && j == n-1) || seen[rev.Data] {
+			// an emptied replaced reply (only the newest value is kept) has
+			// no text to show
+			if (r.State == lifecycle.Active && j == n-1) || seen[rev.Data] || rev.Data == "" {
 				continue
 			}
 			seen[rev.Data] = true

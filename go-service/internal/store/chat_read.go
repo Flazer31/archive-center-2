@@ -42,7 +42,8 @@ func sqlLocalSourceKey(whole bool) string {
 	if whole {
 		off = ""
 	}
-	read := `(v.seq IS NOT NULL AND (r.generation_id='' OR v.generation_id='' OR v.generation_id=r.generation_id))`
+	// as memory.SourceOf: a blank text is an emptied reply's marker, unread
+	read := `(v.seq IS NOT NULL AND v.data<>'' AND (r.generation_id='' OR v.generation_id='' OR v.generation_id=r.generation_id))`
 	responses := `(SELECT COALESCE(CONCAT('[',GROUP_CONCAT(CONCAT('{"Seq":',IF(` + read + `,v.seq,0),',"Data":',` + sqlSourceQuote("IF("+read+",v.data,'')") + `,'}') ORDER BY r.ord SEPARATOR ','),']'),'null') FROM response_rows r LEFT JOIN revisions v ON v.session_key=r.session_key AND v.row_key=r.row_key AND v.seq=(SELECT MAX(x.seq) FROM revisions x WHERE x.session_key=r.session_key AND x.row_key=r.row_key) WHERE r.session_key=t.session_key AND r.turn_id=t.turn_id AND r.state='active'` + off + `)`
 	return sqlSourceKey("t.session_key", "t.turn_id", members, responses)
 }

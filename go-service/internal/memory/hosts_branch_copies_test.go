@@ -7,8 +7,8 @@ import (
 )
 
 // The branch's copies are recorded once, when the branch is first seen with
-// its parent (user decision 10-23, option B); later deletions, edits and
-// rerolls do not move a copy to another parent turn (ASTRA-RECHECK-52).
+// its parent (option B); later deletions, edits and rerolls do not move a
+// copy to another parent turn.
 
 func loaderOf(sessions ...*lifecycle.Session) Loader {
 	return func(k string) (*lifecycle.Session, bool, error) {
@@ -31,8 +31,7 @@ func record(t *testing.T, s *lifecycle.Session, load Loader) {
 
 // New ids (PocketRisu): the child deletes a copy after the copies were
 // recorded; the other copies keep their parent turns. (The deleted copy is
-// the middle one: the chat's first rows gone are a front cut and stay,
-// user 11-08.)
+// the middle one: the chat's first rows gone are a front cut and stay.)
 func TestRecordedCopiesSurviveADeletedCopy(t *testing.T) {
 	p := lifecycle.NewSession("chat:P")
 	offApply(p, lifecycle.SourceLoad, append(append(offPair("p1", "one"), offPair("p2", "two")...), offPair("p3", "three")...)...)
@@ -72,8 +71,8 @@ func TestRecordedCopiesIgnoreTheParentsDeletion(t *testing.T) {
 
 // A fork from a parent user row: the copy of that turn is the branch's own,
 // and stays its own after the earlier copy leaves the front of the chat
-// (kept as a front cut, user 11-08) and the branch writes an answer the
-// parent's earlier turn also has.
+// (kept as a front cut) and the branch writes an answer the parent's
+// earlier turn also has.
 func TestRecordedPartialForkStaysOwn(t *testing.T) {
 	p := lifecycle.NewSession("chat:P")
 	offApply(p, lifecycle.SourceLoad, append(offPair("p1", "x"), offPair("p2", "x")...)...)
@@ -112,7 +111,7 @@ func TestGrandchildReadsTheDirectParentsRevision(t *testing.T) {
 
 // The copies are not recorded while the parent's scope does not show the
 // branch point yet, nor while a copy's text is not read; they are recorded
-// at the observation that has both (ASTRA-RECHECK-54 3.2).
+// at the observation that has both.
 func TestCopiesWaitForTheBranchPointAndTheText(t *testing.T) {
 	p := lifecycle.NewSession("chat:P")
 	offApply(p, lifecycle.SourceLoad, offPair("p1", "one")...)
@@ -145,7 +144,7 @@ func TestCopiesWaitForTheBranchPointAndTheText(t *testing.T) {
 // A fork from a parent user row, first seen after the branch deleted its
 // earlier copy and answered: the turn's answer comes after the marker, so
 // the turn is the branch's own, not the parent's earlier same-text turn
-// (ASTRA-RECHECK-52 2, before any record).
+// (before any record).
 func TestCopiesAreOnlyTheRowsBeforeTheMarker(t *testing.T) {
 	p := lifecycle.NewSession("chat:P")
 	offApply(p, lifecycle.SourceLoad, append(offPair("p1", "x"), offPair("p2", "x")...)...)

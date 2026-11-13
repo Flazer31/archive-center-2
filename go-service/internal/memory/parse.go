@@ -98,6 +98,22 @@ func Unreadable(notes []string) bool {
 	return len(notes) == 1 && notes[0] == NoResponse
 }
 
+// Damaged reports an answer whose response object was broken and from which
+// nothing at all could be read: no item ("salvaged 0 complete items"), no
+// elapsed days and no story date. Not an empty answer ("{}" or empty arrays
+// read as they are).
+func Damaged(out Output, notes []string) bool {
+	if out.ElapsedDays != 0 || StoryDateOf(out.StoryDate) != "" || len(out.Entities)+len(out.Memories)+len(out.Scenes)+len(out.Links)+len(out.BodyEvents) > 0 {
+		return false
+	}
+	for _, n := range notes {
+		if n == "salvaged 0 complete items" {
+			return true
+		}
+	}
+	return false
+}
+
 var responseArrays = []string{"entities", "memories", "scenes", "links", "body_events"}
 
 // isOutput reports an object holding one of the response arrays, or an
@@ -111,6 +127,9 @@ func isOutput(v json.RawMessage) bool {
 		return true // {}: every array is optional, nothing new this turn
 	}
 	if _, ok := fields["elapsed_days"]; ok {
+		return true
+	}
+	if _, ok := fields["story_date"]; ok {
 		return true
 	}
 	for _, k := range responseArrays {
@@ -167,6 +186,9 @@ func salvage(text string, notes []string) (Output, []string) {
 			}
 			if key == "elapsed_days" {
 				_ = json.Unmarshal(value, &out.ElapsedDays)
+			}
+			if key == "story_date" {
+				_ = json.Unmarshal(value, &out.StoryDate)
 			}
 		}
 	}
@@ -477,20 +499,32 @@ func decodeItem(item json.RawMessage, v any) ([]string, bool) {
 			continue
 		}
 		var list, kept []json.RawMessage
-		var left []string
-		// effects are referred to by position (m1.2): after a malformed one
-		// the next would take its number, so they are left out with it
+		var left, salvaged []string
+		// effects are referred to by position (m1.2): a malformed one keeps
+		// its place with the fields that read; one with none would leave a
+		// hole, so it and the ones after it are left out (their numbers
+		// would move)
 		positional := k == "effects"
 		if json.Unmarshal(val, &list) == nil {
 			for i, e := range list {
 				one, _ := json.Marshal([]json.RawMessage{e})
 				if !(positional && len(left) > 0) && reads(k, one) {
 					kept = append(kept, e)
-				} else {
-					left = append(left, fmt.Sprintf("%s[%d]", k, i))
+					continue
 				}
+				if positional && len(left) == 0 {
+					if fixed, parts := salvageEffect(e); fixed != nil {
+						kept = append(kept, fixed)
+						for _, f := range parts {
+							salvaged = append(salvaged, fmt.Sprintf("%s[%d].%s", k, i, f))
+						}
+						continue
+					}
+				}
+				left = append(left, fmt.Sprintf("%s[%d]", k, i))
 			}
 		}
+		dropped = append(dropped, salvaged...)
 		if len(kept) == 0 {
 			dropped = append(dropped, k)
 			delete(fields, k)
@@ -505,6 +539,28 @@ func decodeItem(item json.RawMessage, v any) ([]string, bool) {
 	reflect.ValueOf(v).Elem().Set(reflect.Zero(reflect.TypeOf(v).Elem()))
 	json.Unmarshal(rest, v)
 	return dropped, true
+}
+
+// salvageEffect reads a malformed effect's fields that are of the right
+// shape. nil when its person or slot is what failed (they decide which
+// earlier values it replaces), or when what reads shows no change (no
+// value, earlier value or status: the delivered line would say nothing).
+func salvageEffect(e json.RawMessage) (json.RawMessage, []string) {
+	var eff Effect
+	parts, ok := decodeItem(e, &eff)
+	if !ok || eff.Value == "" && eff.Before == "" && eff.Status == "" {
+		return nil, nil
+	}
+	for _, p := range parts {
+		if p == "about" || p == "slot" {
+			return nil, nil
+		}
+	}
+	b, err := json.Marshal(eff)
+	if err != nil {
+		return nil, nil
+	}
+	return b, parts
 }
 
 // unknownFields notes fields the contract does not have (they stay in the

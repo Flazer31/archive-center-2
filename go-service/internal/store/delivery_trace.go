@@ -17,6 +17,14 @@ type DeliveryLocator struct {
 // deliveryTracesKept is how many latest deliveries a chat keeps.
 const deliveryTracesKept = 50
 
+// DeliveryStage is one step of a memory request and the milliseconds it
+// took: observe, session (reading the chat, waiting for its lock), embed,
+// body, select (Go's choice), preprocess, narrative, other (the rest).
+type DeliveryStage struct {
+	Name string `json:"name"`
+	MS   int64  `json:"ms"`
+}
+
 // DeliverySummary is what a request asked and got, beside its candidates.
 type DeliverySummary struct {
 	Locator         *DeliveryLocator `json:"locator"`
@@ -35,6 +43,9 @@ type DeliverySummary struct {
 	Warning         string           `json:"warning,omitempty"`
 	QueryError      string           `json:"query_error,omitempty"`
 	TotalMS         int64            `json:"total_ms"`
+	// Stages split TotalMS in the order the request ran them (1.1 A1);
+	// absent in traces saved before 1.1.
+	Stages []DeliveryStage `json:"stages,omitempty"`
 	// Memories is the management view of the delivered records as they
 	// were when sent (later edits do not change it).
 	Memories []InjectedMemory `json:"memories"`
@@ -42,6 +53,9 @@ type DeliverySummary struct {
 	Preprocess *PreprocessRecord `json:"preprocess,omitempty"`
 	// Narrative is what narrative support did (nil when off)
 	Narrative *NarrativeRecord `json:"narrative,omitempty"`
+	// Prefix compares the request with the chat's previous one (1.1 A2);
+	// nil for the first request since the backend started
+	Prefix *RequestPrefix `json:"prefix,omitempty"`
 }
 
 // DeliveryTrace is one stored delivery.

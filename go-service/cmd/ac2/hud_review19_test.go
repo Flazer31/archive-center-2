@@ -18,8 +18,8 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// Review 19 (HUD): the defects Sol reproduced, asserted fixed. Each case
-// failed against the HUD before these fixes (probe-01 in review 19).
+// Defects once reproduced, asserted fixed. Each case failed against the
+// HUD before these fixes.
 func TestHUDReview19FirstCallIsNotARetry(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once

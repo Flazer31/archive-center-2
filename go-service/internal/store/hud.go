@@ -153,10 +153,9 @@ func (d *DB) HUDNotices(session string) ([]HUDNotice, error) {
 }
 
 // HUDFailedJob is a chat's generation that failed and is not done: the HUD
-// tells it even when its turn is no longer among the latest two (review 19
-// B-04). All are read: the HUD filters them against the session, so a
-// limit here could leave out one it would show (R2-B03). Notes give the
-// first reason only.
+// tells it even when its turn is no longer among the latest two. All are
+// read: the HUD filters them against the session, so a limit here could
+// leave out one it would show. Notes give the first reason only.
 type HUDFailedJob struct {
 	Turn     int
 	Source   string

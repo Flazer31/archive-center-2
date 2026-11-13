@@ -7,6 +7,7 @@ package generate
 import (
 	"archivecenter2/goservice/internal/body"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -38,9 +39,9 @@ type Store interface {
 	DoneKeys(session string) (map[string]bool, error)
 	LoadSession(key string) (*lifecycle.Session, bool, error)
 	SessionKeys() ([]string, error)
-	Grant(session string, turns []int) error
+	Grant(session string, srcs []memory.Source) error
 	Grants(session string) (map[int]bool, error)
-	Ungrant(session string, turn int) error
+	Ungrant(session string, src memory.Source) error
 	RearmFailedJobs() (int64, error)
 }
 
@@ -50,6 +51,9 @@ type Report struct {
 	Job    int64
 	Done   bool // the job was already done; nothing was called
 	Reused bool // the answer received on an earlier run was stored; nothing was called
+	// CallFailed: the model call itself failed (no answer came: a 429, a
+	// timeout, the provider down), as against an answer that came broken
+	CallFailed bool
 	// Answer is the answer in hand (received now or earlier); when storing
 	// it failed, the caller keeps it for the next run
 	Answer     *Answer
@@ -98,19 +102,18 @@ type Answer struct {
 
 // turn is Turn with an answer the caller still holds from an earlier run
 // whose stores all failed (the job was not marked received): it is stored
-// without calling the model again.
-// newer, when set, reports a newer notice of the chat; it is asked where a
-// new model call would begin (after the input is read and built), and the
-// call is left to the run of the newer notice (ASTRA-RECHECK-57 2). An
-// answer in hand is stored as before.
-// knownMax is the ceiling on the whole request, in chars (0 = none; the
-// critic setting known_chars). Beta 0.0.1 had left it unapplied; it applies
-// again (user 11-09, a tester's 3,000-char setting changed nothing), on the
-// whole request since 1.0.8 (a long reply alone took 15,000-25,000 chars):
-// the stored memory gets what the rest leaves, through memory.SelectWithin.
-// past: how many of earlier, from the start, are an attached past (C22);
-// the prompt then numbers turns in story order (the past 1..past, the
-// chat's own turns after it), as injection does.
+// without calling the model again. newer, when set, reports a newer notice
+// of the chat; it is asked where a new model call would begin (after the
+// input is read and built), and the call is left to the run of the newer
+// notice. An answer in hand is stored as before. knownMax is the ceiling on
+// the whole request, in chars (0 = none; the critic setting known_chars).
+// Beta 0.0.1 had left it unapplied; it applies again (a tester's 3,000-char
+// setting changed nothing), on the whole request since 1.0.8 (a long reply
+// alone took 15,000-25,000 chars): the stored memory gets what the rest
+// leaves, through memory.SelectWithin. past: how many of earlier, from the
+// start, are an attached past (C22); the prompt then numbers turns in story
+// order (the past 1..past, the chat's own turns after it), as injection
+// does.
 func turn(ctx context.Context, st Store, p Provider, model string, earlier []memory.Source, past int, src memory.Source, held *Answer, newer func() bool, knownMax int) (Report, error) {
 	r := Report{Turn: src.Turn}
 	job, err := st.JobFor(src)
@@ -126,7 +129,7 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 	if job.State == "unreadable" && held == nil {
 		// read it again first (a later parser may read it); made again only
 		// when it is still unreadable (it stays in unread_answers)
-		if _, notes := memory.Parse(job.Response); !memory.Unreadable(notes) {
+		if out, notes := memory.Parse(job.Response); !needsCall(out, notes, false) {
 			held = &Answer{job.Model, job.Request, job.ReadItems, job.Response}
 		}
 	}
@@ -144,6 +147,9 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 		model, r.Prompt, r.Known = held.Model, held.Request, held.ReadItems
 		r.Result = provider.Result{Content: held.Response}
 		r.Reused = true
+		// a long reply's parts: their notes are read again from the record
+		// (the merged answer no longer carries them)
+		keepNote = append(keepNote, partNotes(held.Request)...)
 	} else {
 		var known memory.Known
 		if ks, ok := st.(interface {
@@ -158,12 +164,13 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 		}
 		r.KnownItems = len(known.Memories)
 		// generation reads the replies without the model's reasoning
-		// envelopes; the stored source keeps them
-		read := memory.SourceWithoutReasoning(src)
+		// envelopes; the stored source keeps them and without markup
+		// (HTML a card or plugin put in)
+		read := memory.SourceWithoutMarkup(memory.SourceWithoutReasoning(src))
 		read.Turn += past // the prompt's number of this turn in story order
 		var texts []string
 		for _, e := range earlier {
-			texts = append(texts, memory.TurnText(memory.SourceWithoutReasoning(e)))
+			texts = append(texts, memory.TurnText(memory.SourceWithoutMarkup(memory.SourceWithoutReasoning(e))))
 		}
 		text := memory.TurnText(read)
 		instructions := memory.Instructions
@@ -189,35 +196,110 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 				instructions += "\n" + memory.BodyRules
 			}
 		}
-		// the ceiling is on the whole request (user 11-09 "바꾸고 확인해"):
-		// what the stored memory may take is what the instructions, the
-		// turn's text and its date leave; a long reply leaves less (a
-		// record that always stays is still shown, so the request can go
-		// over by what must stay)
-		known1 := 0
-		if knownMax > 0 {
-			bare := len([]rune(memory.PromptWithText(read, "x", instructions, text))) - 1
-			known1 = max(knownMax-bare, 1)
+		// the ceiling is on the whole request: what the stored memory may
+		// take is what the instructions, the turn's text and its date
+		// leave; a long reply leaves less (a record that always stays is
+		// still shown, so the request can go over by what must stay) the
+		// request for one text read as THIS TURN: the stored memory it
+		// reads is selected for that text, within the ceiling
+		build := func(text string) (memory.Selection, string, string) {
+			known1 := 0
+			if knownMax > 0 {
+				bare := len([]rune(memory.PromptWithText(read, "x", instructions, text))) - 1
+				known1 = max(knownMax-bare, 1)
+			}
+			sel, left := memory.SelectWithin(known, text, texts, known1)
+			shown := memory.RenderKnown(sel, memory.Superseded(known))
+			if left > 0 {
+				keepNote = append(keepNote, fmt.Sprintf("request over its ceiling (%d chars, %d for stored memory): %d records not shown", knownMax, known1, left))
+			}
+			return sel, shown, memory.PromptWithText(read, shown, instructions, text)
 		}
-		var left int
-		r.Selection, left = memory.SelectWithin(known, text, texts, known1)
-		r.Known = memory.RenderKnown(r.Selection, memory.Superseded(known))
-		if left > 0 {
-			keepNote = append(keepNote, fmt.Sprintf("request over its ceiling (%d chars, %d for stored memory): %d records not shown", knownMax, known1, left))
+		fail := func(prompt, shown string, err error) (Report, error) {
+			if ferr := st.FailJob(job, model, prompt, shown, err.Error(), time.Now().Add(RetryDelay(job.Attempts+1))); ferr != nil {
+				return r, ferr
+			}
+			return r, err
 		}
-		r.Prompt = memory.PromptWithText(read, r.Known, instructions, text)
+		parts := memory.ReplyParts(read)
+		if len(parts) == 1 {
+			r.Selection, r.Known, r.Prompt = build(text)
+		} else {
+			r.Selection, r.Known, r.Prompt = build(memory.PartText(read, parts, 0, memory.Output{}))
+		}
 		if newer != nil && newer() {
 			return r, errNewer
 		}
 		if err := st.StartAttempt(job); err != nil {
 			return r, err
 		}
-		r.Result, err = p.Chat(ctx, r.Prompt)
-		if err != nil {
-			if ferr := st.FailJob(job, model, r.Prompt, r.Known, err.Error(), time.Now().Add(RetryDelay(job.Attempts+1))); ferr != nil {
-				return r, ferr
+		if len(parts) == 1 {
+			r.Result, err = p.Chat(ctx, r.Prompt)
+			if err != nil {
+				r.CallFailed = true
+				return fail(r.Prompt, r.Known, err)
 			}
-			return r, err
+		} else {
+			// a long reply: one call per part, in order, each shown what
+			// the earlier parts recorded; the answers are merged into
+			// one answer, kept and stored as one
+			var outs []memory.Output
+			var prompts, shown []string
+			var res provider.Result
+			var raws []partAnswer
+			// the record: each part's request, then each answer as
+			// received, under its part (also when a part fails)
+			record := func() string {
+				a, _ := json.Marshal(raws)
+				return strings.Join(prompts, partSeparator) + partAnswers + string(a)
+			}
+			for k := range parts {
+				prompt, known := r.Prompt, r.Known
+				if k > 0 {
+					// a newer notice (a reroll, an edit, a delete) is not
+					// kept waiting for the rest of this reply
+					if newer != nil && newer() {
+						return r, errNewer
+					}
+					_, known, prompt = build(memory.PartText(read, parts, k, memory.MergeParts(outs)))
+				}
+				prompts = append(prompts, prompt)
+				shown = append(shown, known)
+				var out memory.Output
+				for try := 0; ; try++ {
+					if try > 0 && newer != nil && newer() {
+						return r, errNewer
+					}
+					got, err := p.Chat(ctx, prompt)
+					if err != nil {
+						r.CallFailed = true
+						return fail(record(), strings.Join(shown, partSeparator), err)
+					}
+					res.PromptTokens += got.PromptTokens
+					res.OutputTokens += got.OutputTokens
+					res.Seconds += got.Seconds
+					var notes []string
+					out, notes = memory.Parse(got.Content)
+					raws = append(raws, partAnswer{k + 1, got.Content})
+					if !needsCall(out, notes, try > 0) {
+						break
+					}
+					if try > 0 {
+						// a part read no answer twice: the turn is made again
+						// after a wait, all its parts
+						return fail(record(), strings.Join(shown, partSeparator), fmt.Errorf("%w (part %d of %d)", ErrUnreadable, k+1, len(parts)))
+					}
+				}
+				outs = append(outs, memory.Renumber(out, k+1))
+			}
+			merged, _ := json.Marshal(memory.MergeParts(outs))
+			res.Content = string(merged)
+			r.Result = res
+			// the stored response is the merged answer; the record keeps
+			// the parts' requests and answers
+			r.Prompt = record()
+			r.Known = strings.Join(shown, partSeparator)
+			keepNote = append(keepNote, partNotes(r.Prompt)...)
 		}
 		// kept before storing; if keeping fails, the answer in hand is
 		// still stored now
@@ -228,16 +310,22 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 	notes := keepNote
 	var parseNotes []string
 	r.Output, parseNotes = memory.Parse(r.Result.Content)
-	if memory.Unreadable(parseNotes) {
+	n := job.Attempts
+	if !r.Reused {
+		n++
+	}
+	if n < 1 {
+		n = 1
+	}
+	// a broken answer already made again once: the kept one was broken too
+	retried := false
+	if job.State == "unreadable" && !r.Reused {
+		prev, prevNotes := memory.Parse(job.Response)
+		retried = memory.Damaged(prev, prevNotes)
+	}
+	if needsCall(r.Output, parseNotes, retried) {
 		// nothing could be read: kept, and read or made again after a wait
 		// within the job's call limit (a severe loss, not a small error)
-		n := job.Attempts
-		if !r.Reused {
-			n++
-		}
-		if n < 1 {
-			n = 1
-		}
 		r.Notes = append(notes, parseNotes...)
 		if err := st.KeepUnreadable(job, model, r.Prompt, r.Known, r.Result.Content, r.Notes, time.Now().Add(RetryDelay(n))); err != nil {
 			// not recorded yet: the answer stays in hand and is recorded on
@@ -256,6 +344,72 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 	}
 	r.Notes = saveNotes
 	return r, nil
+}
+
+// partSeparator joins the requests (and the stored memory shown) of a long
+// reply's parts in the job's record.
+const partSeparator = "\n\n===== next part =====\n\n"
+
+// partAnswers follows the parts' requests in the record, before the
+// answers each part received (a JSON array of partAnswer).
+const partAnswers = "\n\n===== answers as received =====\n\n"
+
+// partAnswer is one answer a part received, kept in the record.
+type partAnswer struct {
+	Part   int    `json:"part"`
+	Answer string `json:"answer"`
+}
+
+// partNotes are a long reply's notes read from its record: how many parts
+// it was read in and each part's parse notes, of the answer the part kept
+// (its last). The answers are the JSON array after the last partAnswers
+// mark (JSON escapes line ends, so no answer holds the mark, and text
+// before it is never read as answers); a record of one call gives none.
+func partNotes(record string) []string {
+	i := strings.LastIndex(record, partAnswers)
+	if i < 0 {
+		return nil
+	}
+	var answers []partAnswer
+	if json.Unmarshal([]byte(record[i+len(partAnswers):]), &answers) != nil || len(answers) == 0 {
+		return nil
+	}
+	last := map[int]string{}
+	n := 0
+	for _, a := range answers {
+		last[a.Part] = a.Answer
+		n = max(n, a.Part)
+	}
+	notes := []string{fmt.Sprintf("long reply read in %d parts", n)}
+	for k := 1; k <= n; k++ {
+		_, ns := memory.Parse(last[k])
+		for _, x := range ns {
+			notes = append(notes, fmt.Sprintf("part %d: %s", k, x))
+		}
+	}
+	return notes
+}
+
+// timedProvider gives each model call its own time limit.
+type timedProvider struct {
+	Provider
+	limit time.Duration
+}
+
+func (t timedProvider) Chat(ctx context.Context, prompt string) (provider.Result, error) {
+	ctx, cancel := context.WithTimeout(ctx, t.limit)
+	defer cancel()
+	return t.Provider.Chat(ctx, prompt)
+}
+
+// needsCall says an answer is made again rather than stored: no response
+// object at all, or (1.1) a broken one from which nothing could be read,
+// unless the answer it replaces was broken too (retried); a second broken
+// answer is stored as it reads (its notes kept), so a broken answer costs
+// one more call at most. Failed calls before it do not count; the job's
+// call limit still applies.
+func needsCall(out memory.Output, notes []string, retried bool) bool {
+	return memory.Unreadable(notes) || (memory.Damaged(out, notes) && !retried)
 }
 
 // Worker generates confirmed turns in order within each chat. Different chats
@@ -476,6 +630,9 @@ type ChatState struct {
 	Running      bool `json:"running"`       // being worked on now
 	RetryWaiting bool `json:"retry_waiting"` // a failed turn waits for its next call
 	GivenUp      int  `json:"given_up"`      // turns whose calls are used up
+	// RetryAt is when a chat waiting after a failure runs again (zero when
+	// it does not wait)
+	RetryAt time.Time `json:"-"`
 }
 
 // Chat reports a chat's generation state.
@@ -485,7 +642,26 @@ func (w *Worker) Chat(session string) ChatState {
 	_, waiting := w.pending[session]
 	_, retry := w.retryAt[session]
 	_, indexRetry := w.indexRetry[session]
-	return ChatState{Waiting: waiting, Running: w.running[session] != nil, RetryWaiting: retry || indexRetry, GivenUp: len(w.gaveUp[session])}
+	return ChatState{Waiting: waiting, Running: w.running[session] != nil, RetryWaiting: retry || indexRetry, GivenUp: len(w.gaveUp[session]), RetryAt: w.retryAt[session]}
+}
+
+// Making reports whether the worker is making, or about to make, a chat's
+// memory now: a critic is set and the chat's notice waits or its run goes
+// on. While a run is being started (or a reset runs) it answers true, so a
+// chat handed from its notice to its run is never read as idle; ask again.
+// A chat waiting after a failed call is not being made.
+func (w *Worker) Making(session string) bool {
+	if !w.startMu.TryLock() {
+		return true
+	}
+	defer w.startMu.Unlock()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.p == nil {
+		return false
+	}
+	_, waiting := w.pending[session]
+	return waiting || w.running[session] != nil
 }
 
 // nextRetry is the earliest time a waiting chat may call again.
@@ -572,31 +748,58 @@ func (w *Worker) waitRetry(session string, n notice, at time.Time) {
 	w.last[session] = notice{reload: true} // the latest stored state runs then
 }
 
-// callable reports whether a job may start a model call now: its calls are
-// not used up and its wait after a failed call is over. A received answer
-// needs no call.
-func (w *Worker) callable(session string, n notice, src memory.Source) bool {
+// brokenAnswer reports whether a failed job's last note says its answer
+// came broken (a long reply's part read no answer twice), not that its
+// call failed. The note is the error text the worker stored; a provider's
+// error starts with its own name and status.
+func brokenAnswer(notes string) bool {
+	var list []string
+	if json.Unmarshal([]byte(notes), &list) != nil || len(list) == 0 {
+		return false
+	}
+	return strings.HasPrefix(list[len(list)-1], ErrUnreadable.Error())
+}
+
+// callable reports whether a job may go on now (ok): its calls are not
+// used up and its wait after a failed call is over. noCall: what it does
+// needs no model call (a received answer, or one read again). hold: until
+// when the chat's later turns wait, after this job's model call failed (a
+// 429, the provider down; not an answer that came broken), also when the
+// job was given up; zero when they need not wait. It is read from the
+// stored job, so a newer notice or a restart keeps it (bug report 11-12).
+func (w *Worker) callable(session string, n notice, src memory.Source) (ok, noCall bool, hold time.Time) {
 	j, err := w.st.JobFor(src)
 	if err != nil || j.State == "received" || j.State == "done" {
-		return true
+		return true, err == nil, time.Time{}
 	}
 	if j.State == "unreadable" {
-		if _, notes := memory.Parse(j.Response); !memory.Unreadable(notes) {
-			return true // read again now, without a call
+		if out, notes := memory.Parse(j.Response); !needsCall(out, notes, false) {
+			return true, true, time.Time{} // read again now, without a call
 		}
+	}
+	if j.State == "failed" && w.now().Before(j.NextAt) && !brokenAnswer(j.Notes) {
+		hold = j.NextAt
 	}
 	if j.Attempts >= 1+w.retries() {
 		w.giveUp(session, src.Key())
-		return false
+		// given up: the next turn waits as after the first failed call,
+		// not the longer wait this job's next call would have had
+		if !hold.IsZero() {
+			hold = hold.Add(RetryDelay(1) - RetryDelay(j.Attempts))
+			if !w.now().Before(hold) {
+				hold = time.Time{}
+			}
+		}
+		return false, false, hold
 	}
 	if j.Attempts > 0 && w.now().Before(j.NextAt) {
 		w.waitRetry(session, n, j.NextAt)
-		return false
+		return false, false, hold
 	}
 	w.mu.Lock()
 	delete(w.gaveUp[session], src.Key()) // e.g. the setting was raised
 	w.mu.Unlock()
-	return true
+	return true, false, time.Time{}
 }
 
 func (w *Worker) giveUp(session, key string) {
@@ -700,6 +903,7 @@ func (w *Worker) chat(ctx context.Context, session string, n notice) {
 	// parent's last reply) is made as the branch's own turn.
 	parentDone := map[string]map[string]bool{}
 	var earlier []memory.Source
+	var holdUntil time.Time // a model call failed: later calls wait until then
 	past := 0
 	for _, t := range turns {
 		if t.Past {
@@ -748,18 +952,34 @@ func (w *Worker) chat(ctx context.Context, session string, n notice) {
 			w.mu.Unlock()
 		}
 		if done[key] && grants[src.Turn] {
-			if uerr := w.st.Ungrant(session, src.Turn); uerr != nil {
+			if uerr := w.st.Ungrant(session, src); uerr != nil {
 				w.record(false, uerr)
 				w.waitRetry(session, n, w.now().Add(RetryDelay(1)))
 			}
 		}
-		if ready && src.Readable() && !done[key] && (held != nil || w.callable(session, n, src)) {
+		call, noCall := held != nil, held != nil
+		if ready && src.Readable() && !done[key] && held == nil {
+			var hold time.Time
+			call, noCall, hold = w.callable(session, n, src)
+			if hold.After(holdUntil) {
+				holdUntil = hold
+			}
+		}
+		if ready && src.Readable() && !done[key] && call {
+			if !noCall && w.now().Before(holdUntil) {
+				// an earlier turn's model call failed (a 429): the later
+				// turns' calls wait with it (bug report 11-12)
+				w.waitRetry(session, n, holdUntil)
+				return
+			}
 			p, model := w.active()
 			timeout := w.timeout
 			if c, ok := p.(interface{ CallTimeout() time.Duration }); ok && c.CallTimeout() > 0 {
 				timeout = c.CallTimeout()
 			}
-			tctx, cancel := context.WithTimeout(ctx, timeout)
+			// the time limit is each model call's (a long reply's parts are
+			// several calls), not the turn's
+			tctx, cancel := context.WithCancel(ctx)
 			// a newer notice of this chat came while this run went on: the
 			// next run goes on from it, so a turn the chat no longer has
 			// (deleted, rerolled) is not made from this one
@@ -787,7 +1007,7 @@ func (w *Worker) chat(ctx context.Context, session string, n notice) {
 				return
 			}
 			w.progress("generating", session, src.Turn, src.Key(), nil, nil)
-			r, err := turn(provider.WithSession(tctx, strings.TrimPrefix(session, "chat:")), w.st, p, model, earlier, past, src, held, newer, w.readMax())
+			r, err := turn(provider.WithSession(tctx, strings.TrimPrefix(session, "chat:")), w.st, timedProvider{p, timeout}, model, earlier, past, src, held, newer, w.readMax())
 			w.progress("generation_finished", session, src.Turn, src.Key(), nil, err)
 			cancel()
 			if errors.Is(err, errNewer) {
@@ -809,13 +1029,35 @@ func (w *Worker) chat(ctx context.Context, session string, n notice) {
 			}
 			if err != nil {
 				w.afterFailure(session, n, src, r)
+				if r.CallFailed {
+					// the call itself failed (bug report 11-12: after a 429
+					// every later turn was called at once and failed too):
+					// the later turns' calls wait until its stored wait
+					// ends, also when it was given up (no wait is left when
+					// no later turn needs a call)
+					j, jerr := w.st.JobFor(src)
+					if jerr != nil {
+						w.waitRetry(session, n, w.now().Add(RetryDelay(1)))
+						return
+					}
+					at := j.NextAt
+					if j.Attempts >= 1+w.retries() || !at.After(w.now()) {
+						// given up, or its wait not stored (the failure's
+						// record failed): the next turn waits as after a
+						// first failed call
+						at = w.now().Add(RetryDelay(1))
+					}
+					if at.After(holdUntil) {
+						holdUntil = at
+					}
+				}
 			} else {
 				w.mu.Lock()
 				delete(w.gaveUp[session], key)
 				w.mu.Unlock()
 			}
 			if err == nil && grants[src.Turn] {
-				if uerr := w.st.Ungrant(session, src.Turn); uerr != nil {
+				if uerr := w.st.Ungrant(session, src); uerr != nil {
 					w.record(false, uerr) // made; dropped on the next run
 					w.waitRetry(session, n, w.now().Add(RetryDelay(1)))
 				}
@@ -1003,22 +1245,26 @@ func (w *Worker) Backfill(session string, turns []memory.ScopedTurn, max int, re
 	// the read scope the worker uses: a branch's copies of parent turns are
 	// the parent's and are not asked for here
 	scope := memory.On(turns)
-	var want []int
+	var asks []memory.Source
 	for _, t := range scope {
 		if !t.Inherited && !t.Confirmed && t.Source.Readable() && !done[t.Source.Key()] {
-			want = append(want, t.Source.Turn)
+			asks = append(asks, t.Source)
 		}
 	}
 	if recentFirst {
-		for i, j := 0, len(want)-1; i < j; i, j = i+1, j-1 {
-			want[i], want[j] = want[j], want[i]
+		for i, j := 0, len(asks)-1; i < j; i, j = i+1, j-1 {
+			asks[i], asks[j] = asks[j], asks[i]
 		}
 	}
-	if max > 0 && len(want) > max {
-		want = want[:max]
+	if max > 0 && len(asks) > max {
+		asks = asks[:max]
 	}
-	if err := w.st.Grant(session, want); err != nil {
+	if err := w.st.Grant(session, asks); err != nil {
 		return nil, err
+	}
+	want := make([]int, len(asks))
+	for i, src := range asks {
+		want[i] = src.Turn
 	}
 	w.mu.Lock()
 	_, waiting := w.pending[session]

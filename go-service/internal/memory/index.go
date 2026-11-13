@@ -85,7 +85,7 @@ func MemoryRefs(m Memory) []IndexEntry {
 	}
 	if m.Basis != nil {
 		add("basis", m.Basis.Ref)
-		add("basis_from", m.Basis.From)
+		add("basis_from", SourceParts(m.Basis.From)...)
 	}
 	return out
 }

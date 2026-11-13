@@ -127,7 +127,7 @@ func namesHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate.Worker
 				})
 			}
 			// A merge rewrites the same memory rows an index run is updating,
-			// so it also runs between worker runs, like unmerge (review 03).
+			// so it also runs between worker runs, like unmerge.
 			if worker != nil && strings.HasSuffix(r.URL.Path, "/merge") {
 				err = worker.WithChatOperation(run)
 			} else {

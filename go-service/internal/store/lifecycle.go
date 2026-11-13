@@ -11,8 +11,9 @@ import (
 )
 
 // SaveSession writes the current state of a session and its new events in
-// one transaction. Turns, members and rows are never removed: deleted and
-// replaced rows keep their history with a state.
+// one transaction. Turns, members and rows are kept with a state; the text
+// of a reply a reroll replaced is emptied and a reply's earlier texts are
+// deleted (only the newest value is kept), as the session reports them.
 func (d *DB) SaveSession(s *lifecycle.Session, events []lifecycle.Event, renames []lifecycle.Rename) error {
 	tx, err := d.sql.Begin()
 	if err != nil {
@@ -50,7 +51,7 @@ func (d *DB) SaveSession(s *lifecycle.Session, events []lifecycle.Event, renames
 		}
 		for i, r := range t.Responses {
 			if err := exec(`INSERT INTO response_rows (session_key, row_key, turn_id, ord, state, generation_id, awaiting_replacement, off, cut) VALUES (?,?,?,?,?,?,?,?,?)
-				ON DUPLICATE KEY UPDATE state=VALUES(state), generation_id=VALUES(generation_id), awaiting_replacement=VALUES(awaiting_replacement), off=VALUES(off), cut=VALUES(cut)`,
+				ON DUPLICATE KEY UPDATE ord=VALUES(ord), state=VALUES(state), generation_id=VALUES(generation_id), awaiting_replacement=VALUES(awaiting_replacement), off=VALUES(off), cut=VALUES(cut)`,
 				s.Key, r.Key, t.ID, i, string(r.State), r.Gen, r.AwaitingReplacement, r.Off, r.Cut); err != nil {
 				return fmt.Errorf("response: %w", err)
 			}
@@ -62,6 +63,25 @@ func (d *DB) SaveSession(s *lifecycle.Session, events []lifecycle.Event, renames
 				}
 			}
 		}
+	}
+	// what the session forgot (a failed save drops the session; the reload
+	// reads the last good state, so nothing is lost twice)
+	pruned := s.TakePruned()
+	for key, seq := range pruned.Cleared {
+		if err := exec(`DELETE FROM revisions WHERE session_key=? AND row_key=? AND seq<?`, s.Key, key, seq); err != nil {
+			return fmt.Errorf("prune: %w", err)
+		}
+		if err := exec(`UPDATE revisions SET data='', confirmed=FALSE WHERE session_key=? AND row_key=? AND seq=?`, s.Key, key, seq); err != nil {
+			return fmt.Errorf("prune: %w", err)
+		}
+	}
+	for key, seq := range pruned.Trimmed {
+		if err := exec(`DELETE FROM revisions WHERE session_key=? AND row_key=? AND seq<?`, s.Key, key, seq); err != nil {
+			return fmt.Errorf("prune: %w", err)
+		}
+	}
+	if err := scrubDropped(tx, s, pruned.Texts); err != nil {
+		return fmt.Errorf("prune: %w", err)
 	}
 	if s.BranchOf[0] != "" {
 		if err := exec(`INSERT INTO session_branch (session_key, parent_chat, parent_message, markers, copies_chat, copies_message) VALUES (?,?,?,?,?,?)
@@ -90,7 +110,60 @@ func (d *DB) SaveSession(s *lifecycle.Session, events []lifecycle.Event, renames
 			return fmt.Errorf("event: %w", err)
 		}
 	}
+	if err := regrant(tx, s); err != nil {
+		return fmt.Errorf("grants: %w", err)
+	}
 	return tx.Commit()
+}
+
+// regrant keeps a turn asked for (gen_grants) asking for its text as
+// observed now: an edit of the turn after it was asked replaces what is to
+// be made, so the grant goes when the edited text is made (it kept the
+// earlier text's key and was never dropped).
+func regrant(tx *sql.Tx, s *lifecycle.Session) error {
+	asked, err := grantsToMove(tx, s.Key)
+	if err != nil || len(asked) == 0 {
+		return err
+	}
+	return moveGrants(tx, s, asked)
+}
+
+// grantsToMove reads a chat's grants, locked until the save commits: a run
+// dropping a grant of the earlier text waits, then finds the grant asking
+// for the edited one (read unlocked, the drop came between this read and
+// the update).
+func grantsToMove(tx *sql.Tx, session string) (map[int]string, error) {
+	rows, err := tx.Query(`SELECT turn_id, COALESCE(source_key,'') FROM gen_grants WHERE session_key=? FOR UPDATE`, session)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	asked := map[int]string{}
+	for rows.Next() {
+		var turn int
+		var key string
+		if err := rows.Scan(&turn, &key); err != nil {
+			return nil, err
+		}
+		asked[turn] = key
+	}
+	return asked, rows.Err()
+}
+
+// moveGrants points each grant read at its turn's text now.
+func moveGrants(tx *sql.Tx, s *lifecycle.Session, asked map[int]string) error {
+	for _, t := range s.ActiveTurns() {
+		key, ok := asked[t.ID]
+		if !ok {
+			continue
+		}
+		if now := memory.SourceOf(s.Key, t).Key(); now != key {
+			if _, err := tx.Exec(`UPDATE gen_grants SET source_key=? WHERE session_key=? AND turn_id=?`, now, s.Key, t.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // LoadSession reads a stored session; ok is false when none is stored.

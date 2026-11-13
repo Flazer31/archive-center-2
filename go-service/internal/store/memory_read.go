@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -327,12 +328,12 @@ func (d *DB) jobDates(jobs []int64, at map[int64]int, scopeDates map[int64]strin
 	date := map[int64]string{}
 	deltas := map[int64]sql.NullInt64{}
 	legacy := map[int64]bool{}
-	err = d.each(`SELECT g.job_id, g.turn_id, t.dates, JSON_UNQUOTE(JSON_EXTRACT(g.source, '$.dates.body')), g.elapsed_days, g.state FROM gen_jobs g LEFT JOIN logical_turns t ON t.session_key=g.session_key AND t.turn_id=g.turn_id WHERE g.job_id IN `+in, args, func(rows *sql.Rows) error {
+	err = d.each(`SELECT g.job_id, g.turn_id, t.dates, JSON_UNQUOTE(JSON_EXTRACT(g.source, '$.dates.body')), g.elapsed_days, g.state, g.story_date FROM gen_jobs g LEFT JOIN logical_turns t ON t.session_key=g.session_key AND t.turn_id=g.turn_id WHERE g.job_id IN `+in, args, func(rows *sql.Rows) error {
 		var j int64
 		var t int
-		var dates, bodyDate, state sql.NullString
+		var dates, bodyDate, state, criticDate sql.NullString
 		var delta sql.NullInt64
-		if err := rows.Scan(&j, &t, &dates, &bodyDate, &delta, &state); err != nil {
+		if err := rows.Scan(&j, &t, &dates, &bodyDate, &delta, &state, &criticDate); err != nil {
 			return err
 		}
 		deltas[j] = delta
@@ -353,6 +354,10 @@ func (d *DB) jobDates(jobs []int64, at map[int64]int, scopeDates map[int64]strin
 		if date[j] == "" && bodyDate.Valid && bodyDate.String != "" {
 			date[j] = memory.DateText(map[string]string{"body": bodyDate.String})
 		}
+		// last, the date the critic read in the turn's text
+		if date[j] == "" && criticDate.Valid && criticDate.String != "" {
+			date[j] = memory.DateText(map[string]string{"story": criticDate.String})
+		}
 		return nil
 	})
 	if err != nil {
@@ -360,26 +365,86 @@ func (d *DB) jobDates(jobs []int64, at map[int64]int, scopeDates map[int64]strin
 	}
 	if scopeDates != nil {
 		// Scoped jobs are in canonical story order, including jobs with no
-		// memory items. Only the scope's first source establishes Day 0;
-		// an unmade first turn must not reset a later made turn's delta.
-		// User decision 11-05 ("숨기기"): once a turn made before 0.0.4 is
-		// in the story, its unknown passage would make every later Day
-		// wrong, so no Day is shown from there on (remaking those turns
-		// fills their passage). Calendar dates are unaffected.
+		// memory items. Only the scope's first source establishes Day 0; an
+		// unmade first turn must not reset a later made turn's delta. Once a
+		// turn made before 0.0.4 is in the
+		// story, its unknown passage would make every later Day wrong, so no
+		// Day is shown from there on (remaking those turns fills their
+		// passage). Calendar dates are unaffected. A turn without a date
+		// after one with a calendar date goes on from that date by the days
+		// that passed since (a chat with year/month/day does not turn to Day
+		// N where a turn shows no date); a turn made before 0.0.4 after it
+		// leaves the passage unknown, and a turn holding different dates
+		// names no one day to go on from.
 		var day big.Int
 		unknown := false
+		var cal time.Time
+		haveCal := false
+		since := int64(0)
 		for _, j := range jobs {
 			delta := deltas[j]
 			unknown = unknown || legacy[j]
+			if legacy[j] {
+				haveCal = false
+			}
 			if j != first && delta.Valid && delta.Int64 > 0 {
 				day.Add(&day, big.NewInt(delta.Int64))
+				// past the bound it stays just over it: no overflow, no date
+				since = min(since+min(delta.Int64, maxCarriedDays+1), maxCarriedDays+1)
 			}
-			if date[j] == "" && delta.Valid && !unknown {
+			if date[j] != "" {
+				cal, haveCal = turnCalendar(date[j])
+				since = 0
+				continue
+			}
+			if delta.Valid && haveCal && since <= maxCarriedDays {
+				d := cal.AddDate(0, 0, int(since))
+				date[j] = memory.DateText(map[string]string{"date": fmt.Sprintf("%d/%02d/%02d", d.Year(), int(d.Month()), d.Day())})
+				continue
+			}
+			if delta.Valid && !unknown {
 				date[j] = "Day " + day.String()
 			}
 		}
 	}
 	return turn, date, nil
+}
+
+// maxCarriedDays bounds the days a date is carried over (about 27,000
+// years): beyond it no date is made.
+const maxCarriedDays = 10_000_000
+
+var turnDate = regexp.MustCompile(`^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$`)
+
+// turnCalendar is the one calendar day a turn's stored date names ("name =
+// value; ..." as memory.DateText writes it; the forms a date variable may
+// take, years of one to four digits). false when it names none or
+// different days.
+func turnCalendar(text string) (time.Time, bool) {
+	var day time.Time
+	found := false
+	for _, part := range strings.Split(text, "; ") {
+		_, value, ok := strings.Cut(part, " = ")
+		if !ok {
+			return time.Time{}, false
+		}
+		m := turnDate.FindStringSubmatch(strings.TrimSpace(value))
+		if m == nil {
+			continue
+		}
+		y, _ := strconv.Atoi(m[1])
+		mo, _ := strconv.Atoi(m[2])
+		d, _ := strconv.Atoi(m[3])
+		t := time.Date(y, time.Month(mo), d, 0, 0, 0, 0, time.UTC)
+		if t.Year() != y || int(t.Month()) != mo || t.Day() != d {
+			continue
+		}
+		if found && !t.Equal(day) {
+			return time.Time{}, false
+		}
+		day, found = t, true
+	}
+	return day, found
 }
 
 // CurrentKnown reads a chat's current memory: the current jobs of the turns
@@ -470,7 +535,11 @@ func (d *DB) KnownFor(sources []memory.Source) (memory.Known, error) {
 			dates[id] = memory.DateText(s.Dates)
 		}
 	}
-	return d.knownOfAt(jobs, nil, dates, first)
+	k, err := d.knownOfAt(jobs, nil, dates, first)
+	if err != nil {
+		return k, err
+	}
+	return d.knownProfiles(k, jobs)
 }
 
 // KnownForStory is KnownFor for a chat with an attached past (C22): the
@@ -499,7 +568,11 @@ func (d *DB) KnownForStory(sources []memory.Source, past int) (memory.Known, err
 			}
 		}
 	}
-	return d.knownOfAt(jobs, at, dates, first)
+	k, err := d.knownOfAt(jobs, at, dates, first)
+	if err != nil {
+		return k, err
+	}
+	return d.knownProfiles(k, jobs)
 }
 
 // ItemIDs gives the persistent id each new item of a job's answer got, by
@@ -535,14 +608,16 @@ func (d *DB) UnreadAnswers(job int64) ([]string, error) {
 }
 
 // Grant records history turns of a chat the user asked to make.
-func (d *DB) Grant(session string, turns []int) error {
+func (d *DB) Grant(session string, srcs []memory.Source) error {
 	tx, err := d.sql.Begin() // all asked turns or none
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	for _, t := range turns {
-		if _, err := tx.Exec(`INSERT IGNORE INTO gen_grants (session_key, turn_id, created_at) VALUES (?,?,?)`, session, t, time.Now().UTC()); err != nil {
+	for _, src := range srcs {
+		// a turn asked again is asked for its text now
+		if _, err := tx.Exec(`INSERT INTO gen_grants (session_key, turn_id, source_key, created_at) VALUES (?,?,?,?)
+			ON DUPLICATE KEY UPDATE source_key=VALUES(source_key), created_at=VALUES(created_at)`, session, src.Turn, src.Key(), time.Now().UTC()); err != nil {
 			return err
 		}
 	}
@@ -563,13 +638,16 @@ func (d *DB) Grants(session string) (map[int]bool, error) {
 	return out, err
 }
 
-// Ungrant drops a grant once its turn is made.
-func (d *DB) Ungrant(session string, turn int) error {
-	// A remake can grant this turn while its previous call is still
-	// finishing. Completing that retired job must leave the new grant for
-	// the new job; grant completion follows the latest job of the turn.
-	_, err := d.sql.Exec(`DELETE FROM gen_grants WHERE session_key=? AND turn_id=?
-		AND (SELECT state FROM gen_jobs WHERE session_key=? AND turn_id=? ORDER BY job_id DESC LIMIT 1)='done'`, session, turn, session, turn)
+// Ungrant drops a turn's grant once the text it asks for is made: src is
+// the text a run made or found made. A grant for another text of the turn
+// (asked after an edit, while a run held the chat from before it) stays
+// (11-13: it was dropped and the edited turn never made, since 1.0.0). A
+// remake gives the same text a new job (the retired one renamed): the grant
+// goes when that new job is made, not the retired one.
+func (d *DB) Ungrant(session string, src memory.Source) error {
+	_, err := d.sql.Exec(`DELETE FROM gen_grants WHERE session_key=? AND turn_id=? AND (source_key IS NULL OR source_key=?)
+		AND EXISTS (SELECT 1 FROM gen_jobs WHERE session_key=? AND turn_id=? AND source_key=? AND state='done')`,
+		session, src.Turn, src.Key(), session, src.Turn, src.Key())
 	return err
 }
 

@@ -6,8 +6,8 @@ import (
 	"archivecenter2/goservice/internal/lifecycle"
 )
 
-// Turned-off turns keep their place for matching a branch's copies
-// (ASTRA-RECHECK-51 H3-1) and are dropped from the read scope only after.
+// Turned-off turns keep their place for matching a branch's copies and
+// are dropped from the read scope only after.
 
 func offPair(prefix, body string) []lifecycle.Row {
 	return []lifecycle.Row{{ChatID: prefix + "u", Role: "user", Data: "input " + body}, {ChatID: prefix + "a", Role: "char", Data: "reply " + body}}
@@ -69,8 +69,7 @@ func TestOffBranchPointKeepsTheEarlierPast(t *testing.T) {
 }
 
 // A reply without chatId seen unreadable and disabled stands for the known
-// reply: that reply is off (ASTRA-RECHECK-51 H3-2), and the turn has
-// nothing left to read.
+// reply: that reply is off, and the turn has nothing left to read.
 func TestUnreadableKeylessDisabledReplyIsOff(t *testing.T) {
 	s := lifecycle.NewSession("chat:A")
 	offApply(s, lifecycle.SourceOutputEvent, lifecycle.Row{ChatID: "u", Role: "user", Data: "input"}, lifecycle.Row{Role: "char", Data: "original"})
@@ -82,7 +81,7 @@ func TestUnreadableKeylessDisabledReplyIsOff(t *testing.T) {
 	}
 }
 
-// The user decision (10-23, option C): a disabled user row (a one-turn OOC)
+// A disabled user row (a one-turn OOC)
 // takes the whole turn out; a disabled reply alone takes only that reply
 // out, and the turn's other replies are read.
 func TestDisabledUserRowOrReplyOnly(t *testing.T) {

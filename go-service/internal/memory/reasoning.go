@@ -7,9 +7,9 @@ import (
 
 // Reasoning envelopes are a model's own thinking written into its reply
 // (<Thoughts>…</Thoughts>, <think>, <reasoning>, …). Generation reads the
-// turn without them (user 10-29: ignored only when memory is made; the
-// stored reply keeps them). The names follow AC1
-// stripHiddenReasoningEnvelopes: the tag name, not a plugin, decides.
+// turn without them (ignored only when memory is made; the stored reply
+// keeps them). The names follow AC1 stripHiddenReasoningEnvelopes: the
+// tag name, not a plugin, decides.
 var (
 	reasoningOpen       = regexp.MustCompile(`<\s*([A-Za-z][A-Za-z0-9_:-]{1,40})(?:\s+[^>\n]{0,120})?\s*>`)
 	reasoningName       = regexp.MustCompile(`^(?:internal|hidden|private|model|assistant)?(?:thoughts?|thinking|think|reasoning|reason|analysis|scratchpad|scratch|reflection|reflect|deliberation|rationale|chainofthought|cot)$`)

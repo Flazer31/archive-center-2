@@ -23,6 +23,7 @@ type contrastFixture struct {
 	vectors      map[int64][]float32
 	memories     []memory.Memory
 	queries      []string
+	holds        map[int64]string // C18 flags by memory number
 	missingTable bool
 	vectorReads  int
 	failRead     int // inject a contrast SQL failure on this read
@@ -54,13 +55,14 @@ type contrastRows struct {
 	next    int
 	ids     []int64
 	fixture *contrastFixture
+	noFail  bool // the similarity read: injected failures are the contrast's
 }
 
 func (r *contrastRows) Columns() []string { return r.cols }
 func (r *contrastRows) Close() error      { return nil }
 func (r *contrastRows) Next(dest []driver.Value) error {
 	if r.fixture != nil {
-		if r.fixture.vectorReads == r.fixture.failRowRead && r.next == 1 {
+		if !r.noFail && r.fixture.vectorReads == r.fixture.failRowRead && r.next == 1 {
 			return fmt.Errorf("synthetic contrast row read failure")
 		}
 		if r.next == len(r.ids) {
@@ -116,13 +118,15 @@ func (c contrastConn) QueryContext(_ context.Context, q string, args []driver.Na
 				r.ids = append(r.ids, id)
 			}
 		}
-	case strings.HasPrefix(q, "SELECT m.id, 1 - VEC_DISTANCE_COSINE"):
-		r.cols = []string{"id", "similarity"}
-		// Controlled external rank input isolates rerendering from ranking.
-		for _, a := range args[2:] {
+	case strings.HasPrefix(q, "SELECT m.id, e.`vector`"):
+		// the similarity read (1.1: compared in Go): the stored vectors
+		r.cols = []string{"id", "vector"}
+		// missingTable stands for the contrast read only (see its tests)
+		r.fixture, r.noFail = f, true
+		for _, a := range args[1:] {
 			id, _ := strconv.ParseInt(a.Value.(string), 10, 64)
-			if _, ok := f.vectors[id]; ok {
-				r.rows = append(r.rows, []driver.Value{id, float64(len(f.memories)) - float64(id)})
+			if _, ok := f.vectors[id]; ok || f.count > 0 {
+				r.ids = append(r.ids, id)
 			}
 		}
 	case strings.HasPrefix(q, "SELECT job_id, source_key FROM gen_jobs WHERE state='done'"):
@@ -138,8 +142,8 @@ func (c contrastConn) QueryContext(_ context.Context, q string, args []driver.Na
 			r.rows = append(r.rows, []driver.Value{int64(i + 1), int64(1), string(b), nil})
 		}
 	case strings.HasPrefix(q, "SELECT g.job_id, g.turn_id, t.dates"):
-		r.cols = []string{"job_id", "turn_id", "dates", "body_date", "elapsed_days", "state"}
-		r.rows = [][]driver.Value{{int64(1), int64(1), nil, nil, nil, "done"}}
+		r.cols = []string{"job_id", "turn_id", "dates", "body_date", "elapsed_days", "state", "story_date"}
+		r.rows = [][]driver.Value{{int64(1), int64(1), nil, nil, nil, "done", nil}}
 	case strings.HasPrefix(q, "SELECT job_id, target, kind, who,"):
 		for i, m := range f.memories {
 			for _, who := range m.HideFrom {
@@ -152,7 +156,10 @@ func (c contrastConn) QueryContext(_ context.Context, q string, args []driver.Na
 		}
 	case strings.Contains(q, " FROM name_relations "), strings.Contains(q, " FROM mentions "), strings.Contains(q, " FROM links "):
 	case strings.HasPrefix(q, "SELECT id, hold FROM memories"):
-		r.cols = []string{"id", "hold"} // C18 flags: none in these fixtures
+		r.cols = []string{"id", "hold"} // C18 flags: none unless a fixture sets them
+		for id, h := range f.holds {
+			r.rows = append(r.rows, []driver.Value{id, h})
+		}
 	default:
 		return nil, fmt.Errorf("unexpected SQL: %s", q)
 	}

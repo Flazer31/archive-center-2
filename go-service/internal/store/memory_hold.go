@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// C18 pin and suppress (user decision 11-07 "AC2 방식으로 고정·억제"): a
+// C18 pin and suppress: a
 // flag on a memory row. An edit keeps it (the row stays); a remade turn
 // writes new rows, so its flags are gone; a copy carries the column.
 //   - pin: delivered first, without Select, ranking or scene contrast, within

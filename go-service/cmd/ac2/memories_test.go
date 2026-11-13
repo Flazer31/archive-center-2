@@ -246,7 +246,7 @@ func TestMemoryScreen(t *testing.T) {
 
 // A branch's copied turn the parent never made is made as the branch's own:
 // the memory screen lists it as the branch's (not inherited) and lets it be
-// edited, as delivery reads it (SOL-REVIEW-STEP9-04 R01).
+// edited, as delivery reads it.
 func TestBranchOwnMemoryOnTheScreen(t *testing.T) {
 	db := modelsDB(t)
 	pipe := pipeline.New(db)
@@ -331,7 +331,7 @@ func TestEditAndDeleteUnlinkTheTurnsVectors(t *testing.T) {
 }
 
 // A delete alone (no edit before it) asks the chat to be indexed again: its
-// turn's other memories wait for their vectors (R03).
+// turn's other memories wait for their vectors.
 func TestDeleteAsksForAnIndex(t *testing.T) {
 	db := modelsDB(t)
 	pipe := pipeline.New(db)

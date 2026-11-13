@@ -103,7 +103,7 @@ func TestFailedSaveReloadsLastSavedState(t *testing.T) {
 	}
 }
 
-// ---- Astra 16 N6 counterexample, kept as a regression ----
+// ---- counterexample, kept as a regression ----
 func TestAstra16ResentOldObservationDoesNotRevertCurrentBody(t *testing.T) {
 	st := &memStore{saved: map[string][]*lifecycle.Turn{}}
 	p := New(st)
@@ -188,7 +188,7 @@ func TestProcessAsksForResendOnlyWhenTextUnknown(t *testing.T) {
 	}
 }
 
-// ---- Astra 17 recheck counterexamples, kept as regressions ----
+// ---- recheck counterexamples, kept as regressions ----
 func TestAstra17FailedSaveRetryWithPluginIdentity(t *testing.T) {
 	st := &memStore{saved: map[string][]*lifecycle.Turn{}}
 	p := New(st)
@@ -256,7 +256,7 @@ func TestFailureStopsBatchAndIsReturned(t *testing.T) {
 	}
 }
 
-// ---- Astra 18 recheck counterexamples, kept as regressions (R1 left out: see apply) ----
+// ---- recheck counterexamples (2), kept as regressions (one left out: see apply) ----
 func a18field(s string, full bool) map[string]any {
 	n, h := ingest.Fingerprint(s)
 	f := map[string]any{"len": n, "h": h}
@@ -312,11 +312,13 @@ func TestAstra18ExactOutputReplayDoesNotAddRevisions(t *testing.T) {
 	e["reread_chat"] = re["stored_chat"]
 	r.Event, _ = json.Marshal(e)
 	p.Process([]observe.Record{r})
-	n := len(st.saved["chat:A"][0].Responses[0].Revisions)
+	// only the newest text is kept, so a count stays 1 even when a replay
+	// re-applies: compare the texts with their numbers
+	n := fmt.Sprint(st.saved["chat:A"][0].Responses[0].Revisions)
 	p.Process([]observe.Record{r})
-	got := len(st.saved["chat:A"][0].Responses[0].Revisions)
+	got := fmt.Sprint(st.saved["chat:A"][0].Responses[0].Revisions)
 	if got != n {
-		t.Fatalf("same boot+seq response-loss retry grew revisions %d -> %d", n, got)
+		t.Fatalf("same boot+seq response-loss retry changed the texts %s -> %s", n, got)
 	}
 }
 func TestAstra18RestartFingerprintMissingThenDeleteLosesRevision(t *testing.T) {
@@ -326,12 +328,20 @@ func TestAstra18RestartFingerprintMissingThenDeleteLosesRevision(t *testing.T) {
 	p.Process([]observe.Record{a18rec(2, "load", "B", true, "")})
 	p = New(st)
 	resend, _ := p.Process([]observe.Record{a18rec(3, "output", "B", false, "A")})
-	// Both fingerprints can be recovered from DB history in principle, but current route cannot.
+	// B is the session's text; A is not (only the newest text is kept).
 	p.Process([]observe.Record{ev(4, `"hook":"beforeRequest","stored_chat":{"chat_id":"A","rows":[{"i":0,"role":"user","chat_id":"u1","data":{"text":"q"}}]}`)})
 	t.Logf("resend=%v final=%s", resend, fmt.Sprint(st.saved["chat:A"][0].Responses[0].Revisions))
+	// only the newest text is kept, so the old text A is not in the stored
+	// session history after the restart. This fake store keeps no raw
+	// observations, so A is unknown here: its fingerprint must not be taken
+	// as known, and the plugin is asked for the texts again. (A real store
+	// may still find A in the raw observations, RawTextsOf.)
+	if !resend {
+		t.Fatal("return-to-A fingerprint was ACKed without its text being known")
+	}
 	r := st.saved["chat:A"][0].Responses[0]
-	if len(r.Revisions) < 3 || r.Revisions[len(r.Revisions)-1].Data != "A" {
-		t.Fatal("return-to-A observation was ACKed then deleted without ever applied")
+	if r.State != lifecycle.Deleted || len(r.Revisions) != 1 {
+		t.Fatalf("the reply deleted next must stay a deleted row with one text: %+v", r)
 	}
 }
 
@@ -340,11 +350,12 @@ func TestAstra18ExactRetryComparison(t *testing.T) {
 	p := New(st)
 	r := observe.Record{Event: json.RawMessage(`{"boot_id":"b18","seq":1,"hook":"output","event_chat":{"chat_id":"A","rows":[{"i":0,"role":"user","chat_id":"u","data":{"text":"q"}},{"i":1,"role":"char","chat_id":"a","data":{"text":"event"}}]},"reread_chat":{"chat_id":"A","rows":[{"i":0,"role":"user","chat_id":"u","data":{"text":"q"}},{"i":1,"role":"char","chat_id":"a","data":{"text":"reread"}}]}}`)}
 	p.Process([]observe.Record{r})
-	n := len(st.saved["chat:A"][0].Responses[0].Revisions)
+	// compare the texts with their numbers (a count stays 1)
+	n := fmt.Sprint(st.saved["chat:A"][0].Responses[0].Revisions)
 	p.Process([]observe.Record{r})
-	got := len(st.saved["chat:A"][0].Responses[0].Revisions)
+	got := fmt.Sprint(st.saved["chat:A"][0].Responses[0].Revisions)
 	if got != n {
-		t.Fatalf("revisions %d -> %d", n, got)
+		t.Fatalf("revisions %s -> %s", n, got)
 	}
 }
 

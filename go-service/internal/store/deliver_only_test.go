@@ -156,10 +156,10 @@ func TestDeliverOnlyCompletionFact(t *testing.T) {
 	}
 }
 
-// Review 17 A-01: an event's disclosure limit stays with its completing fact
-// when the fact is delivered without the event (the event not chosen): the
-// fact's line shows it and goes by the secret ceiling. With both delivered
-// (no chosen set) the delivery is as before.
+// An event's disclosure limit stays with its completing fact when the fact
+// is delivered without the event (the event not chosen): the fact's line
+// shows it and goes by the secret ceiling. With both delivered (no chosen
+// set) the delivery is as before.
 func TestDeliverOnlyLoneFactKeepsEventProtection(t *testing.T) {
 	db := testDB(t)
 	input := "리나가 진홍인장을 떠올렸다" // the fact is not a Select candidate: it completes the event

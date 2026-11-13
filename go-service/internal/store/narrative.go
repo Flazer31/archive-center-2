@@ -10,10 +10,9 @@ import (
 	"archivecenter2/goservice/internal/secret"
 )
 
-// Narrative support (1.0 E03, preprocessing step 4, design
-// 20261107-ac2-preprocessing/DESIGN-04.md, user 11-08 "4단계로", "둘 다
-// 선택지로", "출판사 연결 따로", "빼기"). Both are optional and off by
-// default; any failure sends the request as it would go without them.
+// Narrative support (1.0 E03, preprocessing step 4). Both are optional and off
+// by default; any failure sends the request as it would go without
+// them.
 const (
 	GuideOff    = ""
 	GuideWeak   = "weak"   // connections: what of the chosen memory runs into the scene
@@ -41,7 +40,7 @@ var ErrNarrativeChoice = errors.New("unknown narrative support choice")
 
 // NarrativeSettings are the guide level, its ceiling, the input improvement
 // and their AI connection ("the publisher"): the critic's connection unless
-// AIOwn (user 11-08 "출판사 연결 따로"). The key is sealed.
+// AIOwn. The key is sealed.
 type NarrativeSettings struct {
 	Level string
 	Chars int
@@ -158,9 +157,9 @@ func (d *DB) SetNarrativeSettings(box *secret.Box, s NarrativeSettings) error {
 
 // NarrativeRecord is what one delivery's narrative support did, kept with
 // the delivery: the guide's level, what it kept and dropped (an item with no
-// basis is dropped, user 11-08 "빼기"), the input improvement and its text
-// beside the original (shown on the this-turn tab), calls and errors (keys
-// masked; status and HUD carry a summary).
+// basis is dropped), the input improvement and its text beside the original
+// (shown on the this-turn tab), calls and errors (keys masked; status and
+// HUD carry a summary).
 type NarrativeRecord struct {
 	Level       string `json:"level,omitempty"`
 	Guide       string `json:"guide,omitempty"` // "made", or why none was made
@@ -178,4 +177,7 @@ type NarrativeRecord struct {
 	GuideText   string `json:"guide_text,omitempty"` // what was sent, both parts
 	AICalls     int    `json:"ai_calls"`
 	MS          int64  `json:"ms"`
+	// the two calls run at once; each one's own wait (1.1 A1)
+	GuideMS int64 `json:"guide_ms,omitempty"`
+	InputMS int64 `json:"input_ms,omitempty"`
 }

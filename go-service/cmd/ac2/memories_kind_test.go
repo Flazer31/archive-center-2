@@ -10,10 +10,10 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// The memory screen by kind (user 10-28: items apart, like AC1): kind keeps
-// one kind; facts come grouped in the prompt's mode order and views by whose
-// they are, each group the latest turn first; kinds counts every kind among
-// what the search keeps, whichever kind is shown.
+// The memory screen by kind (items apart, like AC1): kind keeps one kind;
+// facts come grouped in the prompt's mode order and views by whose they are,
+// each group the latest turn first; kinds counts every kind among what the
+// search keeps, whichever kind is shown.
 func TestMemoryScreenByKind(t *testing.T) {
 	db := modelsDB(t)
 	pipe := pipeline.New(db)

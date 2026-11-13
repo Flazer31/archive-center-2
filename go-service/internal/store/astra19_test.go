@@ -13,11 +13,11 @@ import (
 	"archivecenter2/goservice/internal/pipeline"
 )
 
-// Astra 19 R1 (ASTRA-RECHECK-19.md), kept as a regression: after a backend
-// restart a fingerprint-only candidate is filled for plain, GigaTrans and
-// Yumi rows, rows without chatId and chats without id. Events go through the
-// production HTTP handler and RawSink, as the plugin's do (Astra's original
-// called Process directly, which skips the raw store the recovery reads).
+// Kept as a regression: after a backend restart a fingerprint-only candidate
+// is filled for plain, GigaTrans and Yumi rows, rows without chatId and
+// chats without id. Events go through the production HTTP handler and
+// RawSink, as the plugin's do (an earlier version called Process directly,
+// which skips the raw store the recovery reads).
 func TestAstra19RestartObservationPreserved(t *testing.T) {
 	db := testDB(t)
 	for _, kind := range []string{"plain", "giga", "yumi", "no_row_id", "no_chat_id"} {
@@ -96,7 +96,7 @@ func TestAstra19RestartObservationPreserved(t *testing.T) {
 	}
 }
 
-// ---- Astra 20 (ASTRA-RECHECK-20.md R2 and the chat id delimiter), kept as regressions ----
+// ---- the chat id delimiter, kept as regressions ----
 
 func a20Post(t *testing.T, s *observe.Server, evs ...json.RawMessage) map[string]any {
 	t.Helper()
@@ -185,7 +185,7 @@ func TestAstra20ChatIDDelimiterRecovery(t *testing.T) {
 	}
 }
 
-// ---- Astra 21 (ASTRA-RECHECK-21.md N1): a row chatId containing "|" ----
+// ---- a row chatId containing "|" ----
 func TestAstra21RowDelimiterRecovery(t *testing.T) {
 	d := testDB(t)
 	s := observe.NewServer(RawSink{DB: d})

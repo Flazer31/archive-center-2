@@ -137,7 +137,7 @@ func TestReportMissingAndOversizeSingleLine(t *testing.T) {
 	}
 }
 
-// Since user decision 11-08 the error text is shown whole; only credential
+// The error text is shown whole; only credential
 // values are masked and very long text is cut at ErrorLimit.
 func TestErrorSummaryKeepsResponseBodiesMasksCredentials(t *testing.T) {
 	secret := "sk-" + "synthetic-credential-value"
@@ -212,8 +212,8 @@ func TestCollectLogsKeepsRuntimeErrorPayloadsMasksCredentials(t *testing.T) {
 }
 
 // A key starts a word. Ordinary words and paths that only contain "sk-"
-// (task-, disk-, risk-) are not credentials and stay readable (user
-// 2026-11-10: only credential values are masked, not logs or errors).
+// (task-, disk-, risk-) are not credentials and stay readable (only
+// credential values are masked, not logs or errors).
 func TestRedactKeepsWordsThatOnlyContainAKeyPrefix(t *testing.T) {
 	in := `read C:\data\task-queue-12345678\disk-usage-report.log: access denied; risk-assessment-2026 failed`
 	if got := Redact(in); got != in {

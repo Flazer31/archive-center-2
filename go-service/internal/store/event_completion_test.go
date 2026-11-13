@@ -15,7 +15,9 @@ import (
 func TestDeliverCompletesDeliveredEventOnly(t *testing.T) {
 	db := testDB(t)
 	input := "리나가 진홍인장과 녹색혜성을 떠올렸다"
-	s := chatOf(t, [][2]string{{"처음", "첫 답"}, {"둘째", "두 번째 답"}, {"셋째", "세 번째 답"}, {"오늘", "마지막 답"}}, input)
+	// 리나 is in the request's window, so her facts are not put first as a
+	// name coming back (enteringFirst, 1.1 B1): this test is about completions
+	s := chatOf(t, [][2]string{{"처음", "첫 답"}, {"둘째", "두 번째 답"}, {"셋째", "세 번째 답"}, {"오늘", "리나의 마지막 답"}}, input)
 	raw := `{"entities":[{"id":"n1","name":"리나"},{"id":"n2","name":"세계 규칙"},{"id":"n3","name":"도윤"}],"memories":[
  {"id":"m1","kind":"event","body":"진홍인장이 빛났다"},
  {"id":"m2","kind":"fact","about":"n2","at":"m1","body":"봉인은 같은 등급의 열쇠로만 열린다"},

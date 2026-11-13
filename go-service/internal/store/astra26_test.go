@@ -30,8 +30,10 @@ func TestA26BackfillSurvivesReload(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("load %v %v", ok, err)
 	}
+	// only the newest text is kept: the edit, with the generation
+	// filled in
 	revs := loaded.ActiveTurns()[0].Responses[0].Revisions
-	if len(revs) != 2 {
+	if len(revs) != 1 || revs[0].Data != "편집" {
 		t.Fatal(revs)
 	}
 	for _, r := range revs {
@@ -39,7 +41,7 @@ func TestA26BackfillSurvivesReload(t *testing.T) {
 			t.Fatalf("unfilled revision %+v", r)
 		}
 	}
-	if !revs[0].Confirmed || revs[1].Confirmed || !loaded.ActiveTurns()[0].Confirmed {
+	if revs[0].Confirmed || !loaded.ActiveTurns()[0].Confirmed {
 		t.Fatalf("confirmation changed %+v", revs)
 	}
 	enriched := src

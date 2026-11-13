@@ -87,11 +87,11 @@ func recordedCopy(s *lifecycle.Session, t *lifecycle.Turn) (Source, bool) {
 // them once on the branch (lifecycle.Session.RecordCopies) when the branch
 // is first seen with its parent. It matches whole turns as the host copied
 // them: every parent turn, also one deleted later, with every reply, also
-// one turned off (ASTRA-RECHECK-55 3.1, 3.2, 3.4). Only the turns before
-// the branch marker can be copies; a turn after it is the branch's own.
-// ok is false, and the branch is matched again at a later observation,
-// while the parent is not stored, the parent does not show the branch
-// point, a copy's text is not read yet, or the snapshot showed no marker.
+// one turned off. Only the turns before the branch marker can be copies; a
+// turn after it is the branch's own. ok is false, and the branch is matched
+// again at a later observation, while the parent is not stored, the parent
+// does not show the branch point, a copy's text is not read yet, or the
+// snapshot showed no marker.
 func RecordCopies(s *lifecycle.Session, load Loader) (ok bool, err error) {
 	if s.BranchOf[0] == "" || s.BeforeMarker == nil {
 		return false, nil
@@ -176,9 +176,10 @@ func On(turns []ScopedTurn) []ScopedTurn {
 // chat) and its own turns, in the branch's own order. A parent turn up to the
 // branch point row is the branch's past when the branch holds a copy of it
 // (same texts): its memory is the parent's, and the copy is not made again.
-// When the parent changed the turn after the branch (a reroll), the parent's
-// revision the branch copied is read, so the parent's later change does not
-// rewrite the branch's past. A branch turn that copies no parent turn (the
+// The parent keeps only its newest reply text: when the parent
+// changed the turn after the branch (a reroll, an edit), the text the branch
+// copied is gone, so that branch turn is its own; the parent's later change
+// never rewrites the branch's past. A branch turn that copies no parent turn (the
 // branch edited its copy, or starts inside it) is its own turn. Parent turns
 // after the branch point are not the branch's past.
 //
@@ -274,12 +275,12 @@ func inputIdentity(s Source) string {
 // keyIdentity is a turn's row keys (RisuAI keeps them in a branch).
 func keyIdentity(t ScopedTurn) string { return strings.Join(t.keys, "\x00") }
 
-// copiedRevision is the parent turn's source at the revision the copy
-// holds: the same input texts and, for every reply row, the revision the
-// copy carries. The copy's generation id names it when there is one (a
-// reroll with the same text is another revision); otherwise the earliest
-// revision with the copy's text. ok is false when the copy matches none.
-// The copy's dates are the dates the branch saw.
+// copiedRevision is the parent turn's source at the revision the copy holds: the same
+// input texts and, for every reply row, the revision the copy carries (the parent
+// keeps only its newest text, so this is the current one or none). The
+// copy's generation id names it when there is one (a reroll with the same text is
+// another revision); otherwise the earliest revision with the copy's text. ok is
+// false when the copy matches none. The copy's dates are the dates the branch saw.
 func copiedRevision(p ScopedTurn, copy Source) (Source, bool) {
 	if len(p.Source.Members) != len(copy.Members) || len(p.Source.Responses) != len(copy.Responses) {
 		return Source{}, false

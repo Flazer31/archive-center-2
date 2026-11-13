@@ -35,7 +35,8 @@ func (d *DB) RemakeGeneration(src memory.Source) error {
 	if _, err = tx.Exec(`INSERT INTO gen_jobs (session_key,turn_id,source_key,source,state,created_at) VALUES (?,?,?,?,'requested',?)`, src.Session, src.Turn, src.Key(), string(b), time.Now().UTC()); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`INSERT IGNORE INTO gen_grants (session_key,turn_id,created_at) VALUES (?,?,?)`, src.Session, src.Turn, time.Now().UTC()); err != nil {
+	if _, err = tx.Exec(`INSERT INTO gen_grants (session_key,turn_id,source_key,created_at) VALUES (?,?,?,?)
+		ON DUPLICATE KEY UPDATE source_key=VALUES(source_key), created_at=VALUES(created_at)`, src.Session, src.Turn, src.Key(), time.Now().UTC()); err != nil {
 		return err
 	}
 	return tx.Commit()

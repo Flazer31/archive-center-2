@@ -12,8 +12,7 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// The names the settings screen shows (user 11-08 "4단계로", "둘 다
-// 선택지로").
+// The names the settings screen shows.
 var guideLevelLabels = []map[string]any{
 	{"id": store.GuideOff, "label": "끔"},
 	{"id": store.GuideWeak, "label": "약하게", "detail": "이어지는 점만 참고로"},
@@ -34,8 +33,16 @@ var inputModeLabels = []map[string]any{
 func narrativeHandler(m *models) http.HandlerFunc {
 	var save sync.Mutex
 	view := func(s store.NarrativeSettings) map[string]any {
+		// what the saved choice lacks, as a turn would find it (1.1)
+		problem := ""
+		if n, code := m.narrativeFor(); code != "" {
+			problem = code
+		} else if n != nil {
+			problem = n.problem
+		}
 		return map[string]any{
-			"level": s.Level, "levels": guideLevelLabels, "chars": s.Chars, "input": s.Input, "inputs": inputModeLabels, "ai_own": s.AIOwn,
+			"problem": problem,
+			"level":   s.Level, "levels": guideLevelLabels, "chars": s.Chars, "input": s.Input, "inputs": inputModeLabels, "ai_own": s.AIOwn,
 			"ai": map[string]any{
 				"provider": s.AI.Provider, "model": s.AI.Model, "url": s.AI.URL, "reasoning": s.AI.Reasoning,
 				"timeout_ms": s.AI.TimeoutMS, "temperature": s.AI.Temperature, "max_tokens": s.AI.MaxTokens,

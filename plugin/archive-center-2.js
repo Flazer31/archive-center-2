@@ -1,7 +1,7 @@
 //@name archive_center_2
-//@display-name Archive Center 2 1.0.0
+//@display-name Archive Center 2 1.1.0
 //@api 3.0
-//@version 1.0.0
+//@version 1.1.0
 //@arg ac2_url string Backend URL until this device saves its own in the settings screen (default http://127.0.0.1:28190)
 //@arg ac2_token string Access token until this device saves its own (token.txt in the backend's shared data directory)
 //@arg ac2_hash_only int 1 = send only hash and length (no memories can be made), 0 = send message text (default)
@@ -10,7 +10,7 @@
 // the backend chooses into the request. It never changes the response or
 // the chat. Decisions belong to the backend.
 (async () => {
-  const PLUGIN_VERSION = "1.0.0";
+  const PLUGIN_VERSION = "1.1.0";
   const CONTRACT = "observation.v1";
   const FETCH_TIMEOUT_MS = 8000;
   const api = Risuai;
@@ -45,6 +45,7 @@
   // hooks may run before the HUD's part of the file)
   let hudSee = () => {};
   let hudSettingsChanged = () => {};
+  let hudPlaceReset = async () => {}; // puts the HUD back where it starts (this device)
   // the last memory request's reach to the backend (host-local: only the
   // host sees a request that never arrived); the HUD shows a failed one
   let hudLink = () => {};
@@ -107,10 +108,10 @@
 
   // The address is kept per device (each device may reach the backend by
   // another address). The access token is the host's plugin storage, which
-  // PocketRisu keeps on its server for every device on it (user 10-28: a
-  // phone on the same PocketRisu must not be asked again); this device's own
-  // copy and the plugin arguments serve when it has none. The backend checks
-  // the token on every request.
+  // PocketRisu keeps on its server for every device on it (a phone on the
+  // same PocketRisu must not be asked again); this device's own copy and the
+  // plugin arguments serve when it has none. The backend checks the token on
+  // every request.
   const CONN_KEY = "ac2_conn_v1";
   const SHARED_TOKEN_KEY = "ac2_token_v1";
   const TOKEN_HEADER = "X-AC2-Token";
@@ -604,7 +605,7 @@
     }
     const res = await bridge("/memory/inject", {
       method: "POST",
-      timeoutMs: 100000, // a preprocessing mode may take up to 90 s in the backend (review 18 B-01)
+      timeoutMs: 100000, // a preprocessing mode may take up to 90 s in the backend
       // this request's observation goes along, after the older ones still
       // unsent and in their order (the backend stores them in plugin order):
       // the backend applies them before choosing, so the choice reads the
@@ -634,7 +635,7 @@
     const guide = (res.ok && res.json && res.json.guide) || {};
     // only this turn's user messages (after the last reply) are looked at, the
     // one that is the input itself first; a request handed back already holds
-    // the improved text and is left as it is (review 20 B-01, B-02)
+    // the improved text and is left as it is
     if (rw && typeof rw.from === "string" && rw.from && typeof rw.to === "string") {
       let after = messages.length;
       while (after > 0 && !(messages[after - 1] && messages[after - 1].role === "assistant")) after--;
@@ -827,7 +828,7 @@
     if (res.code && ERR_TEXT[res.code]) return ERR_TEXT[res.code];
     if (res.kind === "connect_failed" || res.kind === "timeout") return "백엔드에 연결할 수 없어요. 주소와 백엔드가 켜져 있는지 확인해 주세요.";
     // a code without a text of its own is shown with what the backend said
-    // (user 11-10: errors are not hidden; only credential values are masked)
+    // (errors are not hidden; only credential values are masked)
     const more = res.detail || (res.json && (res.json.detail || res.json.message)) || "";
     return "요청이 실패했어요 (" + [res.status || res.kind, res.code].filter(Boolean).join(" · ") + ")." + (more ? " " + maskCredentials(more, "") : "");
   }
@@ -941,11 +942,11 @@
   function sbtn(label, onClick, cls) {
     return el("button", { type: "button", class: "ac2-sbtn" + (cls ? " " + cls : ""), on: { click: onClick } }, label);
   }
-  // One write at a time from the settings screen (review 06): while a
-  // confirmed action or a memory save runs, no other write opens or is sent;
-  // the running confirmation itself stays where it is. A finished write reads
-  // again the views shown now (refreshShown), not the view it started from,
-  // which may have been drawn again or left meanwhile.
+  // One write at a time from the settings screen: while a confirmed action or
+  // a memory save runs, no other write opens or is sent; the running
+  // confirmation itself stays where it is. A finished write reads again the
+  // views shown now (refreshShown), not the view it started from, which may
+  // have been drawn again or left meanwhile.
   let writing = false, activeBox = null;
   const BUSY_TEXT = "다른 작업을 처리하는 중이에요. 끝난 뒤 다시 눌러 주세요.";
   const WRITING_TEXT = "처리 중인 작업이 있어요. 끝나면 보고 있는 화면을 다시 읽어요.";
@@ -968,7 +969,7 @@
     if (!v.root.isConnected) { liveViews.delete(v); return null; }
     return Promise.resolve().then(v.refresh).catch(recordPluginError);
   }));
-  // home: the element that tells this write's result (review 07)
+  // home: the element that tells this write's result
   async function oneWrite(run, box, home) {
     writing = true; activeBox = box; writeFailure = ""; failureHome = null;
     showWrite(WRITING_TEXT, true);
@@ -982,7 +983,7 @@
   }
   // true while a write runs: an empty slot shows why nothing opens; what a
   // slot already shows (a confirmation and its inputs, an editor and its
-  // typing) stays, the line above telling the write under way (review 07, 08)
+  // typing) stays, the line above telling the write under way (08)
   const busyHere = (slot) => {
     if (!writing) return false;
     if (!slot.children.length) slot.replaceChildren(el("div", { class: "ac2-help" }, BUSY_TEXT));
@@ -1071,7 +1072,7 @@
     const tokenInfo = el("div", { class: "ac2-help" }, "연결하면 토큰 정보가 여기에 나와요.");
     const rotateMsg = msgBox();
     const rotateArea = el("div", { class: "ac2-row" });
-    // the token check can be turned off (user decision 10-28, on by default)
+    // the token check can be turned off (on by default)
     const useTok = el("input", { type: "checkbox", id: "ac2-tokcheck", style: "width:20px;height:20px" });
     const useMsg = msgBox();
     async function loadTokenInfo() {
@@ -1107,7 +1108,7 @@
       const cur = await conn();
       const nu = String(res.json.token);
       // the new token takes effect here only once the backend accepts it as
-      // the token it keeps (user decision 10-27)
+      // the token it keeps
       const probe = await bridge("/settings/token", { method: "GET" }, { url: cur.url, token: nu });
       if (!probe.ok || !probe.json || probe.json.last4 !== nu.slice(-4)) {
         return rotateMsg.show("새 토큰이 백엔드에 저장된 토큰과 맞는지 확인하지 못했어요. 백엔드 시작 창에 표시된 데이터 폴더의 token.txt에 있는 토큰을 직접 넣어 주세요.", false);
@@ -1119,9 +1120,8 @@
       showTokenOnce(nu);
       loadTokenInfo();
     };
-    // The new token is shown this once, to copy to the other devices; after
-    // closing, the screen never shows it again (token.txt in the shared data directory still has it).
-    // User decision 10-27; removable as a whole if users object.
+    // The new token is shown this once, to copy to the other devices; after closing, the screen never
+    // shows it again (token.txt in the shared data directory still has it).
     function showTokenOnce(value) {
       const field = el("input", { class: "ac2-tokfield", readonly: "readonly", value, "aria-label": "새 접속 토큰" });
       const note = el("div", { class: "ac2-help" },
@@ -1219,8 +1219,8 @@
   function u5Error(res) {
     return ({ bad_extra_headers_json: "Extra Headers는 JSON 객체로 넣어 주세요.", bad_extra_body_json: "Extra Body는 JSON 객체로 넣어 주세요." })[res.code] || errText(res);
   }
-  // the critic's prompt, or the publisher's (user 11-09, like AC1): Go keeps
-  // the text and its default
+  // the critic's prompt, or the publisher's (like AC1): Go keeps the text
+  // and its default
   const PROMPTS = {
     critic: { path: "/settings/prompt", id: "ac2-prompt", who: "평론가", warn: "기억을 만드는 지시문과 JSON 형식 설명이 함께 들어 있어요. 잘못 고치면 기억 만들기가 실패할 수 있어요. 그럴 때는 ‘기본값 복원’을 누르세요." },
     publisher: { path: "/settings/publisher-prompt", id: "ac2-pub-prompt", who: "출판사", warn: "서사 가이드의 규칙 부분이에요. 단계별 항목과 출력 형식은 자동으로 붙어요. 근거(refs)를 적으라는 규칙을 빼면 항목이 버려질 수 있어요. 이상하면 ‘기본값 복원’을 누르세요." } };
@@ -1229,14 +1229,16 @@
     const note = msgBox();
     const content = el("textarea", { id: P.id, rows: "16", class: "ac2-area ac2-wide", "aria-label": P.who + " 지시문" });
     let loaded = "";
-    const apply = (v) => { content.value = loaded = v.content || ""; };
+    // a saved edit stays in use when a new version changes the default
+    const inUse = el("div", { class: "ac2-help" });
+    const apply = (v) => { content.value = loaded = v.content || ""; inUse.textContent = v.custom ? "직접 고친 지시문을 쓰는 중이에요. 새 판의 기본 지시문으로 바꾸려면 ‘기본값 복원’을 누르세요." : "기본 지시문을 쓰는 중이에요."; };
     const save = async (reset) => {
       const r = await bridge(P.path, { method: "POST", body: JSON.stringify(reset ? { reset: true } : { content: content.value }) });
       if (!r.ok) return note.show(errText(r), false);
       apply(r.json); note.show(reset ? "기본값으로 돌아갔어요." : "지시문을 저장했어요.", true);
     };
     const box = el("details", { class: "ac2-box" }, el("summary", { class: "ac2-label", style: "cursor:pointer;min-height:32px" }, P.who + " 프롬프트 편집"),
-      el("div", { class: "ac2-warn" }, P.warn),
+      el("div", { class: "ac2-warn" }, P.warn), inUse,
       el("label", { class: "ac2-help", for: P.id }, P.who + " 지시문"), content,
       el("div", { class: "ac2-acts" }, el("button", { type: "button", class: "ac2-btn ac2-primary", on: { click: () => save(false) } }, "지시문 저장"),
         el("button", { type: "button", class: "ac2-btn", on: { click: () => save(true) } }, "기본값 복원")), note.node);
@@ -1245,11 +1247,12 @@
     box.dirty = () => content.value !== loaded; // unsaved edits
     return box;
   }
-  async function modelsTab(body, keep) {
+  async function modelsTab(body, keep, done) {
     let tail; // the publisher and prompt boxes; kept as they are when the critic/embedding save redraws
     const status = msgBox();
     const res = await bridge("/settings/models", { method: "GET" });
-    if (!res.ok) { body.append(status.node); return status.show(errText(res), false); }
+    // a failed read after a save still shows the boxes with unsaved edits
+    if (!res.ok) { body.append(status.node, ...(keep || []).filter(Boolean)); return status.show(errText(res), false); }
     const view = res.json;
     let provider = view.critic.provider || "";
     const providers = view.providers || [];
@@ -1403,26 +1406,29 @@
       refreshChip(); // a new critic or embedding may start work
       const keepers = (tail || []).map((b) => (b.dirty && b.dirty() ? b : null));
       body.replaceChildren();
-      await modelsTab(body, keepers); // a box with unsaved edits below is kept; the others are read again
-      const after = body.querySelector("[role=status]");
-      if (after) { after.textContent = "저장했어요. 다음 기억 생성과 다음 요청부터 적용돼요."; after.className = "ac2-msg ac2-ok"; after.hidden = false; }
+      await modelsTab(body, keepers, "평론가·임베딩 설정을 저장했어요. 다음 기억 생성과 다음 요청부터 적용돼요."); // a box with unsaved edits below is kept; the others are read again
     };
     const problem = view.critic.problem ? el("div", { class: "ac2-msg ac2-err" }, "지금 설정으로는 기억을 만들 수 없어요: " + (ERR_TEXT[view.critic.problem] || view.critic.problem)) : null;
     const sourceNote = view.critic.source === "flags" ? el("div", { class: "ac2-help" }, "지금은 백엔드 실행 옵션의 설정을 쓰는 중이에요. 여기서 저장하면 이 설정을 써요.") : null;
+    // the critic's prompt sits in the critic's box, as the publisher's does
+    // in the publisher's
+    const cprompt = (keep && keep[1]) || await promptBox();
     body.append(
       el("div", { class: "ac2-box" }, el("div", { class: "ac2-label" }, "평론가 · 대화를 읽고 기억을 만듭니다"),
-        field("ac2-cprov", "제공자", pick), sourceNote, problem, fields, keyField),
+        field("ac2-cprov", "제공자", pick), sourceNote, problem, fields, keyField, cprompt),
       el("div", { class: "ac2-box" }, el("div", { class: "ac2-label" }, "임베딩 · 뜻이 비슷한 기억 찾기"),
         el("div", { class: "ac2-grid" }, field("ac2-eprov", "제공자", epick), field("ac2-emodelpick", "모델", emodelPick, emodel)),
         field("ac2-eurl", "주소", eurl, eurlHelp),
         el("div", { class: "ac2-field" }, ekeyLabel, ekey, ekeyJsonLabel, ekeyJson, ekeyHelp),
         el("div", { class: "ac2-help" }, "임베딩을 바꾸면 그 모델의 벡터를 새로 만들어요. 그동안 기억은 단어와 연결로 골라요.")),
       status.node,
-      el("div", { class: "ac2-row" }, el("button", { class: "ac2-btn ac2-primary", on: { click: save } }, "저장")));
+      el("div", { class: "ac2-row" }, el("button", { class: "ac2-btn ac2-primary", on: { click: save } }, "평론가·임베딩 저장")));
     draw();
     edraw();
-    tail = [(keep && keep[0]) || await narrativeBox(), (keep && keep[1]) || await promptBox()];
-    body.append(...tail);
+    if (done) status.show(done, true);
+    if (keep && keep[0] && keep[0].stale) keep[0].stale(); // the critic it may borrow was just saved
+    tail = [(keep && keep[0]) || await narrativeBox(), cprompt];
+    body.append(tail[0]);
   }
 
   // Shared parts of the preprocessing tab and the publisher box: a field, a
@@ -1446,8 +1452,7 @@
     const reasoning = el("select", { id: id + "-reason", "aria-label": title + " 추론" });
     const key = el("input", { id: id + "-key", type: "password", autocomplete: "off", "aria-label": title + " API 키" });
     const keyHelp = setHelp("");
-    // the critic's advanced options (user 11-08 "출판사도 온도 설정이나 max token
-    // 같은 평론가랑 같은 설정을 가져야 하지 않을까?")
+    // the critic's advanced options
     const number = (sub, name, value, step) => el("input", { id: id + "-" + sub, type: "number", step, value: value ?? "", placeholder: "기존 기본값", "aria-label": title + " " + name });
     const timeout = number("timeout", "응답 대기 시간(초)", ai.timeout_ms == null ? "" : ai.timeout_ms / 1000, "1");
     const temperature = number("temperature", "Temperature", ai.temperature, "0.1");
@@ -1476,7 +1481,7 @@
       cacheField.hidden = prov.value !== "claude";
       const p = (providers || []).find((x) => x.id === prov.value) || {};
       reasoning.replaceChildren(...[""].concat(p.reasoning || []).map((r) => el("option", { value: r }, REASONING_TEXT[r] || r)));
-      reasoning.value = chosen; // review 20 C-02
+      reasoning.value = chosen;
       keyHelp.textContent = ai.provider === prov.value && ai.key_set ? "저장된 키 끝 4자리 " + ai.key_last4 + " · 바꿀 때만 새로 넣으세요." : p.needs_key ? "API 키를 넣어 주세요." : "키가 필요 없으면 비워 두세요.";
     };
     on.addEventListener("change", draw);
@@ -1492,46 +1497,59 @@
     };
   }
 
-  // The publisher (E03, AC1's "출판사 설정" and "입력 개선 LLM"): its
-  // connection, the narrative guide and the input improvement, on the models
-  // tab beside the critic and the embedding (user 11-08 "출판사와 입력 개선은
-  // AC1처럼 설정에 넣는 것이 좋을 거 같네"). Its own save.
+  // The publisher (E03, AC1's "출판사 설정" and "입력 개선 LLM"): its connection, the
+  // narrative guide and the input improvement, on the models tab beside the
+  // critic and the embedding. Its own save.
   async function narrativeBox() {
     const box = el("div", { class: "ac2-box" });
     await fillNarrative(box);
     return box;
   }
+  // what a saved setting lacks, as the backend names it (1.1)
+  const UNSET_TEXT = { ai_off: "AI 연결 없음", decision_off: "판정 모델 없음", store_failed: "설정 읽기 실패" };
+  // told as the critic's own problem is, every part the backend names; it is
+  // about the saved settings, so it goes once the screen holds other values
+  const unsetNote = (what, v) => {
+    const codes = v.problems || (v.problem ? [v.problem] : []);
+    return codes.length ? el("div", { class: "ac2-msg ac2-err" }, "지금 저장된 설정으로는 " + what + "를 쓸 수 없어요: " + codes.map((c) => UNSET_TEXT[c] || ERR_TEXT[c] || c).join(" · ")) : "";
+  };
   // fills the publisher box; false when its settings could not be read
-  async function fillNarrative(box) {
+  async function fillNarrative(box, done, keptPrompt) {
     const note = msgBox();
     box.dirty = null;
     box.append(el("div", { class: "ac2-label" }, "출판사 · 서사 가이드와 입력 개선 (기억을 고른 뒤 한 번 더 불러요)"));
     const r = await bridge("/settings/narrative", { method: "GET" });
-    if (!r.ok) { box.append(note.node); note.show(errText(r), false); return false; }
+    if (!r.ok) {
+      box.append(note.node); note.show(errText(r), false);
+      if (keptPrompt) { box.append(keptPrompt); box.dirty = () => keptPrompt.dirty(); } // an unsaved prompt edit stays
+      return false;
+    }
     const nv = r.json;
     const level = setSelect("ac2-guide-level", "서사 가이드", nv.levels || [], nv.level);
     const chars = el("input", { id: "ac2-guide-chars", type: "number", min: "0", step: "500", value: String(nv.chars ?? 3000), "aria-label": "서사 가이드 예산" });
     const input = setSelect("ac2-input-mode", "입력 개선", nv.inputs || [], nv.input);
     const pubAI = ownConn("ac2-pub-ai", "출판사 AI", nv.ai_own, nv.ai || {}, nv.providers || [], nv.service_tier_providers, nv.deadline_s);
+    // the backend says what the saved choice lacks (a turn would skip the publisher)
+    const pubUnset = unsetNote("출판사", nv);
     const save = async () => {
       note.clear();
       const c = chars.value.trim();
       if (!/^\d+$/.test(c)) return note.show("서사 가이드 예산은 0 이상의 정수로 넣어 주세요.", false);
       const w = await bridge("/settings/narrative", { method: "POST", body: JSON.stringify({ level: level.value, chars: Number(c), input: input.value, ai_own: pubAI.own(), ai: pubAI.get() }) });
       if (!w.ok) return note.show("출판사 설정을 저장하지 못했어요: " + u5Error(w), false);
-      // a failed read of the saved settings stays shown as it is (review 20 B-04)
+      // a failed read of the saved settings stays shown as it is; an unsaved
+      // prompt edit stays as typed (it has its own save)
+      const kept = pbox.dirty() ? pbox : null;
       box.replaceChildren();
-      if (!(await fillNarrative(box))) return;
-      const done = box.querySelector("[role=status]");
-      if (done) { done.textContent = "출판사 설정을 저장했어요. 다음 요청부터 적용돼요."; done.className = "ac2-msg ac2-ok"; done.hidden = false; }
+      await fillNarrative(box, "출판사 설정을 저장했어요. 다음 요청부터 적용돼요.", kept);
     };
-    const pbox = await promptBox("publisher");
+    const pbox = keptPrompt || await promptBox("publisher");
     box.append(
       el("div", { class: "ac2-grid" }, setField("ac2-guide-level", "서사 가이드", level), setField("ac2-guide-chars", "가이드 예산 (자)", chars, setHelp("상한이에요. 채울 목표가 아니에요."))),
       setHelp("약하게: 고른 기억에서 이어지는 점만 참고로 · 중간: 인물별 반응 후보 더함 · 강하게: 이번 응답 전개 계획을 더하고 응답 바로 앞에 넣어 따르게 해요. 근거 없는 항목은 빼요."),
       setField("ac2-input-mode", "입력 개선", input,
         setHelp("이번 요청에만 적용돼요. 저장된 채팅은 그대로예요.")),
-      el("div", { class: "ac2-label" }, "출판사 AI"), pubAI.node,
+      pubUnset, el("div", { class: "ac2-label" }, "출판사 AI"), pubAI.node,
       setHelp("비밀 기억 줄은 출판사 AI에 보내지 않아요. 다만 최근 대화는 그대로 보내므로, 대화에 나온 비밀 내용은 출판사 AI도 봐요. 실패하면 가이드 없이, 입력은 원문 그대로 보내요."),
       note.node,
       el("div", { class: "ac2-row" }, el("button", { type: "button", class: "ac2-btn ac2-primary", on: { click: save } }, "출판사 설정 저장")),
@@ -1539,13 +1557,20 @@
     const sig = () => JSON.stringify([level.value, chars.value, input.value, pubAI.own(), pubAI.get()]);
     const first = sig();
     box.dirty = () => sig() !== first || pbox.dirty(); // unsaved edits
+    // the warning is the saved settings': hidden while other values are shown,
+    // and once the critic it may borrow was saved meanwhile
+    let stale = false; // the critic it may borrow was saved after it was read
+    const recheck = () => { if (pubUnset) pubUnset.hidden = stale || sig() !== first; };
+    for (const x of [level, chars, input, pubAI.node]) for (const ev of ["input", "change"]) x.addEventListener(ev, recheck);
+    box.stale = () => { stale = true; recheck(); };
+    if (done) note.show(done, true);
     return true;
   }
 
   // Preprocessing (E01~E03): how memory is chosen and the decision model.
   // Every choice, its names and checks are the backend's; this tab only shows
   // and sends them.
-  async function prepTab(body) {
+  async function prepTab(body, done) {
     const status = msgBox();
     const [pr, dr] = await Promise.all(["/settings/preprocess", "/settings/decision"].map((p) => bridge(p, { method: "GET" })));
     const bad = [pr, dr].find((r) => !r.ok);
@@ -1567,7 +1592,7 @@
       const p = (dv.providers || []).find((x) => x.id === dprov.value);
       dgrid.hidden = !p;
       if (!p) return;
-      const back = dprov.value === dv.provider; // review 20 A-03
+      const back = dprov.value === dv.provider;
       durl.value = back ? dv.url || "" : p.default_url || ""; dmodel.value = back ? dv.model || "" : p.default_model || "";
       dkeyHelp.textContent = dv.provider === dprov.value && dv.key_set ? "저장된 키 끝 4자리 " + dv.key_last4 + " · 바꿀 때만 새로 넣으세요." : p.key_optional ? "이 PC의 Ollama가 ollama.com에 로그인되어 있으면 키 없이 써요." : "API 키를 넣어 주세요.";
     };
@@ -1583,7 +1608,7 @@
       const dec = { provider: dprov.value, url: durl.value.trim(), model: dmodel.value.trim(), ...(dkey.value.trim() ? { key: dkey.value.trim() } : {}) };
       const steps = [["판정 모델", "/settings/decision", dec],
         ["기억 고르기", "/settings/preprocess", { mode: mode.value, ai_own: prepAI.own(), ai: prepAI.get() }]];
-      // each part is its own save; a failure says which parts went (review 20 B-04)
+      // each part is its own save; a failure says which parts went
       const saved = [];
       for (const [name, path, req] of steps) {
         const r = await bridge(path, { method: "POST", body: JSON.stringify(req) });
@@ -1592,30 +1617,37 @@
       }
       body.replaceChildren();
       // a failed read of the saved settings stays shown as it is
-      if (!(await prepTab(body))) return;
-      const after = body.querySelector("[role=status]");
-      if (after) { after.textContent = "저장했어요. 다음 요청부터 적용돼요."; after.className = "ac2-msg ac2-ok"; after.hidden = false; }
+      await prepTab(body, "저장했어요. 다음 요청부터 적용돼요.");
     };
-    // only the connections the chosen mode uses are shown (user 11-08 "AI +
-    // JEV일때 AI설정과 JEV설정을 따로"); a hidden one keeps its saved values
+    // only the connections the chosen mode uses are shown; a hidden one
+    // keeps its saved values
     const warn = el("div", { class: "ac2-warn" }, "켜면 후보 기억 원문과 최근 대화가 판정 모델과 AI로 나가요.");
+    // the backend says what the saved mode lacks (a turn would use Go's choice)
+    const prepUnset = unsetNote("전처리", pv);
     const aiBox = el("div", { class: "ac2-box", id: "ac2-prep-ai-box" }, el("div", { class: "ac2-label" }, "AI 설정 · 관계없는 줄을 고르는 AI"), prepAI.node);
     const jevBox = el("div", { class: "ac2-box", id: "ac2-prep-jev-box" }, el("div", { class: "ac2-label" }, "판정 모델 설정 · Ollama(clef 등)나 TypeSafe Jev 중 하나"),
       field("ac2-dec-prov", "서비스", dprov),
       dgrid,
       el("div", { class: "ac2-row" }, sbtn("연결 시험 (저장된 설정으로 1회 호출)", test)), dtest.node);
+    // the warning is the saved settings': hidden while other values are shown
+    const psig = () => JSON.stringify([mode.value, prepAI.own(), prepAI.get(), dprov.value, durl.value, dmodel.value, dkey.value]);
+    const pfirst = psig();
+    const recheck = () => { if (prepUnset) prepUnset.hidden = psig() !== pfirst; };
+    for (const x of [aiBox, jevBox]) for (const ev of ["input", "change"]) x.addEventListener(ev, recheck);
     const showModes = () => {
       aiBox.hidden = !["ai", "ai_jev"].includes(mode.value);
       jevBox.hidden = !["jev", "ai_jev"].includes(mode.value);
       warn.hidden = mode.value === "";
+      recheck();
     };
     mode.addEventListener("change", showModes);
     body.append(
       el("div", { class: "ac2-box" }, el("div", { class: "ac2-label" }, "기억 고르기 · Go가 고른 기억을 모델이 한 번 더 고릅니다"),
         field("ac2-prep-mode", "방식", mode,
           help("판정 모델: 관계없는 기억을 빼고 이어진 기억을 더해요(턴마다 판정 요청 평균 3~4개). 판정 모델은 Ollama(clef 등)나 TypeSafe Jev 중 고를 수 있어요. AI: AI가 관계없는 줄을 빼요(턴마다 1회). AI + 판정 모델: 둘 다 관계없다고 한 줄만 빼요."),
+          help("판정 모델은 지금 입력과 최근 대화 2턴을, AI는 요청에 든 최근 대화 전체를 읽고 판단해요."),
           help("넣는 기억은 저장된 원문 그대로예요. 실패하면 Go가 고른 그대로 넣고 응답은 막지 않아요.")),
-        warn),
+        warn, prepUnset),
       aiBox,
       jevBox,
       setHelp("서사 가이드와 입력 개선(출판사)은 '모델' 탭에 있어요."),
@@ -1623,6 +1655,7 @@
       el("div", { class: "ac2-row" }, el("button", { class: "ac2-btn ac2-primary", on: { click: save } }, "저장")));
     ddraw();
     showModes();
+    if (done) status.show(done, true);
     return true;
   }
 
@@ -1642,6 +1675,19 @@
   const VECTOR_TEXT = { off: "꺼짐 (키 없음)", ok: "정상", failing: "실패 중", unknown: "아직 호출 없음" };
   const WARNING_TEXT = { query_vector_off: "임베딩 꺼짐 · 최근 순서", query_vector_failed: "임베딩 실패 · 최근 순서", recent_query_vector_failed: "직전 턴 질의 실패 · 입력 유사도와 최근 순서", no_input_text: "입력 없음 · 최근 순서" };
   const RECENT_QUERY_TEXT = { true: "사용", false: "사용 안 함" };
+  // a memory request's steps as the backend measured them (1.1 A1); a step
+  // under 0.1 s is left out, the order is the backend's
+  const STAGE_TEXT = { observe: "관찰 반영", session: "채팅 읽기", embed: "입력 임베딩", body: "신체 상태", select: "기억 고르기", preprocess: "전처리", narrative: "출판사", other: "그 밖" };
+  // how much of the request equals the previous one from the start (1.1 A2,
+  // Go's comparison); none when there was nothing to compare
+  function prefixText(p) {
+    if (!p) return "비교 자료 없음(백엔드를 켠 뒤 첫 요청, 오래 쓰지 않은 채팅, 또는 이 기능 전 기록)";
+    return "메시지 " + p.same + " / " + p.total + "개, " + p.same_chars + " / " + p.chars + "자 (직전 요청 " + p.prev_total + "개)";
+  }
+  function stageText(stages) {
+    const parts = (stages || []).filter((s) => s.ms >= 100).map((s) => (STAGE_TEXT[s.name] || s.name) + " " + (s.ms / 1000).toFixed(1) + "초");
+    return parts.length ? parts.join(" · ") : null;
+  }
   const SOURCE_TEXT = { saved: "설정 화면", flags: "실행 옵션", off: "꺼 둠", none: "없음" };
   function clock(at) {
     const d = new Date(at);
@@ -1653,8 +1699,8 @@
     return (await currentChat()).id;
   }
   // The chat the memories and worldline tabs show: the one chosen in the
-  // chats tab, else the open chat (user decisions 10-28). open is the open
-  // chat's id; isOpen tells whether the chat shown is it.
+  // chats tab, else the open chat. open is the open chat's id; isOpen
+  // tells whether the chat shown is it.
   let viewChat = null; // { id, name } or null
   async function chatInView() {
     const open = await currentChat();
@@ -1723,15 +1769,15 @@
   }
 
   // Go masks credential values in the combined report; everything else goes as
-  // it is (user 11-08). Offline the plugin's own errors go as recorded.
-  // Offline the backend cannot mask, so credential values are masked here
-  // the way Go does (keys, tokens, passwords, DSN and URL credentials, the
-  // saved connection token); everything else stays (user 11-08).
+  // it is. Offline the plugin's own errors go as recorded. Offline the backend
+  // cannot mask, so credential values are masked here the way Go does (keys,
+  // tokens, passwords, DSN and URL credentials, the saved connection token);
+  // everything else stays.
   function maskCredentials(text, token) {
     let t = String(text);
     if (token) for (const v of new Set([token, encodeURIComponent(token), encodeURI(token)])) t = t.split(v).join("[가림]");
     // a DSN: the password alone when it has no space or "@", else the whole
-    // connection part (as Go, review 22 A-2)
+    // connection part (as Go)
     t = t.replace(/([^\s"':@]+):[^\s@]+@((?:tcp|unix)\([^)]*\))/g, "$1:[가림]@$2")
       .replace(/[^\s"':@/]+:(?!\s|\[가림\]@)(?:(?!\[가림\])[^\r\n@/])*@(?:tcp|unix)\([^)]*\)/g, "[접속 정보 가림]")
       .replace(/(IDENTIFIED\s+BY\s+['"])[^'"]*/gi, "$1[가림]");
@@ -1807,7 +1853,8 @@
       g.last_error ? el("div", { class: "ac2-help" }, "마지막 오류: " + g.last_error) : null);
     const injBox = el("div", { class: "ac2-box" }, el("div", { class: "ac2-label" }, "이 채팅의 마지막 기억 넣기"),
       ...(inj ? [line("시각", clock(inj.at)), line("기억", inj.items + "개"), line("기억 예산", inj.chars + " / " + inj.chars_max + "자"),
-        line("비밀 예산", inj.secret_chars + " / " + inj.secret_max + "자"), line("걸린 시간", inj.total_ms + "ms"),
+        line("비밀 예산", inj.secret_chars + " / " + inj.secret_max + "자"), line("걸린 시간", inj.total_ms + "ms"), stageText(inj.stages) ? line("단계별", stageText(inj.stages)) : null,
+        line("직전 요청과 같은 앞부분", prefixText(inj.prefix)),
         line("직전 턴 질의", RECENT_QUERY_TEXT[inj.recent_query_used] || "미관측"),
         inj.warning ? line("고른 방식", WARNING_TEXT[inj.warning] || inj.warning) : null]
         : [el("div", { class: "ac2-help" }, v.chat ? "백엔드가 켜진 뒤 이 채팅의 요청이 아직 없어요." : "열린 채팅을 읽지 못했어요.")]));
@@ -1825,10 +1872,10 @@
     body.append(head, el("div", { class: "ac2-grid" }, gen, injBox, vec), list, maintenanceBox(), diagnosticsBox(), msg.node, el("div", { class: "ac2-row" }, refresh));
   }
 
-  // Cold start (user decision 10-28; AC1's session normalize panel): the
-  // open chat's earlier turns without memories (history from before the
-  // plugin) are made on the backend, in the background; which turns is the
-  // backend's choice. The panel shows the run's progress and can cancel it.
+  // Cold start (AC1's session normalize panel): the open chat's earlier
+  // turns without memories (history from before the plugin) are made on the
+  // backend, in the background; which turns is the backend's choice. The
+  // panel shows the run's progress and can cancel it.
   const COLD_POLL_MS = 5000;
   // A fresh snapshot of the open chat for the cold start, as an observation
   // batch (null for a chat not open: the host is read by coordinates). With
@@ -1850,7 +1897,7 @@
     const progress = el("div", { class: "ac2-field" });
     const panel = el("section", { class: "ac2-box" });
     let timer = null;
-    let reads = 0; // only the latest read draws (review 07)
+    let reads = 0; // only the latest read draws
     const show = async () => {
       const mine = ++reads;
       clearTimeout(timer);
@@ -1861,9 +1908,11 @@
       if (!p.total) { progress.replaceChildren(); return; }
       const fails = p.failures || [];
       const left = p.waiting > 0;
+      // waiting after a failed call (the backend's retry_waiting): not shown as running
+      const retry = left && !p.running && p.retry_waiting;
       const doneShare = Math.round(100 * (p.done + p.failed) / p.total);
       progress.replaceChildren(...nodes(
-        el("div", { class: "ac2-top" }, el("div", { class: "ac2-main ac2-label" }, left ? "진행 중" : p.failed ? "오류를 포함해 끝남" : p.cancelled ? "취소됨" : "끝남"),
+        el("div", { class: "ac2-top" }, el("div", { class: "ac2-main ac2-label" }, retry ? "다시 시도 대기" + (p.retry_at ? " · 다음 시도 " + clock(p.retry_at) : "") : left ? "진행 중" : p.failed ? "오류를 포함해 끝남" : p.cancelled ? "취소됨" : "끝남"),
           el("span", { class: "ac2-num" }, (p.done + p.failed) + " / " + p.total + "턴")),
         el("div", { style: "height:8px;border-radius:4px;background:var(--line2);overflow:hidden" }, el("div", { style: "height:8px;background:var(--acc);width:" + doneShare + "%" })),
         el("div", { class: "ac2-stats" }, el("div", { class: "ac2-stat" }, "만듦", el("b", {}, String(p.done))), el("div", { class: "ac2-stat" }, "실패", el("b", {}, String(p.failed))),
@@ -1908,10 +1957,10 @@
     return panel;
   }
 
-  // E12 HypaMemory import (user 11-07: when the chat has HypaMemory
-  // summaries and the button is pressed, all of them, duplicates or not).
-  // The host's summaries go to Go as they are; Go makes them into AC2
-  // memory and attaches them before this chat's turns.
+  // E12 HypaMemory import (when the chat has HypaMemory summaries and the
+  // button is pressed, all of them, duplicates or not). The host's
+  // summaries go to Go as they are; Go makes them into AC2 memory and
+  // attaches them before this chat's turns.
   async function hostHypaSummaries(chat) {
     const c = await coords();
     const cur = await api.getChatFromIndex(c.character_index, c.chat_index);
@@ -1933,7 +1982,7 @@
       const p = await bridge("/memory/hypa", { method: "POST", body: JSON.stringify({ ...body, dry_run: true }) });
       if (!p.ok) return out.show(errText(p), false);
       askHere(slot, "HypaMemory 요약 " + p.json.summaries + "개를 가져와 AC2 기억으로 다시 만들어요. 이 중 " + p.json.to_make + "개는 새로 만들어 요약마다 평론가를 한 번씩 불러 비용이 들어요. 가져온 요약은 이 채팅 앞의 연결 기록으로 붙고, 같은 내용의 기억이 이미 있어도 그대로 가져와요.", "가져오기", async () => {
-        // waits for the backend to finish (it may wait for a turn being made), as attaching does (review 15 #2)
+        // waits for the backend to finish (it may wait for a turn being made), as attaching does
         const r = await bridge("/memory/hypa", { method: "POST", body: JSON.stringify(body), timeoutMs: 0 });
         if (!r.ok) return r;
         out.show("요약 " + r.json.summaries + "개를 가져왔어요. " + ((r.json.turns || []).length ? (r.json.turns || []).length + "개의 기억을 백엔드에서 만들고 있어요." : "새로 만들 요약은 없었어요."), true);
@@ -1946,8 +1995,9 @@
       el("div", { class: "ac2-acts" }, el("button", { type: "button", class: "ac2-btn ac2-primary", on: { click: ask } }, "HypaMemory 가져오기")), slot, out.node);
   }
 
-  // The chat chip: a floating action button (the host shows its icon only)
-  // whose dot is the backend's chip state; it opens the status tab.
+  // The chat chip: a button in the chat menu (as AC1's; the host draws a
+  // floating action button at the top right, over other screens' close
+  // button) whose dot is the backend's chip state; it opens the status tab.
   let chipState = "";
   function chipIcon(state) {
     const outline = '<rect x="2" y="3" width="14" height="14" rx="4"/><path d="M2 7h14M6 11h6"/>';
@@ -1959,7 +2009,7 @@
     chipState = state;
     // the same id replaces the button in place; a failure is tried on the
     // next poll
-    (async () => api.registerButton({ name: "Archive Center 2 · " + (CHIP_TEXT[state] || state), icon: chipIcon(state), iconType: "img", location: "action", id: "ac2-chip" },
+    (async () => api.registerButton({ name: "Archive Center 2 · " + (CHIP_TEXT[state] || state), icon: chipIcon(state), iconType: "img", location: "chat", id: "ac2-chip" },
       () => { settingsTab = "status"; openSettings(); }))().catch((e) => { recordPluginError(e); chipState = ""; console.warn("[AC2] chip", e); });
   }
   // The chip is asked for after each memory request and, while its state is
@@ -2224,13 +2274,12 @@
     return item;
   }
 
-  // The memories tab: the chat in view, in four parts (UI design 10-27's
-  // sub tabs): its memories, its stored turns, its names, and the cold start.
+  // The memories tab: the chat in view, in four parts (sub tabs): its memories, its stored turns, its names, and the cold start.
   let memorySub = "list";
-  // This turn (UI design 10-27 "이번 턴"; user 10-28: in the settings, not on
-  // the chat screen): what the backend put in the chat's last request, in
-  // the order it went, and how the previous turn's memory is going. All of
-  // it is Go's record (/injection), kept while the backend runs.
+  // This turn ("이번 턴": in the settings, not on the chat
+  // screen): what the backend put in the chat's last request, in the order
+  // it went, and how the previous turn's memory is going. All of it is
+  // Go's record (/injection), kept while the backend runs.
   function meter(label, used, max, tone) {
     const pct = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
     return el("div", { class: "ac2-stat" }, label, el("b", { style: "font-size:16px" }, used + " / " + max + "자"),
@@ -2276,6 +2325,8 @@
         el("div", { class: "ac2-stats" }, el("div", { class: "ac2-stat" }, "넣은 기억", el("b", {}, v.items + "개")),
           meter("기억 예산", v.chars, v.chars_max), meter("비밀 예산", v.secret_chars, v.secret_max, "vio")),
         line("직전 턴 질의", RECENT_QUERY_TEXT[v.recent_query_used] || "미관측"),
+        stageText(v.stages) ? line("단계별 시간", stageText(v.stages)) : null,
+        line("직전 요청과 같은 앞부분", prefixText(v.prefix)),
         v.warning ? el("div", { class: "ac2-warn" }, "고른 방식 · " + (WARNING_TEXT[v.warning] || v.warning)) : null,
         v.read_error ? el("div", { class: "ac2-help" }, "기억 내용을 읽지 못했어요. 넣은 원문은 아래에서 볼 수 있어요.") : null),
       genBox,
@@ -2356,17 +2407,17 @@
     await go(memorySub);
   }
 
-  // The list by kind (user 10-28: items apart, like AC1): all of them by
-  // turn, or one kind; Go groups a kind (facts by mode, subjective memories
-  // by whose they are) and the list heads each group.
-  // C14 이름별: Go lists a name's current facts by mode, then their
-  // subjective memories, and what is about nobody last; this only heads them.
+  // The list by kind (items apart, like AC1): all of them by turn, or one
+  // kind; Go groups a kind (facts by mode, subjective memories by whose they
+  // are) and the list heads each group. C14 이름별: Go lists a name's current
+  // facts by mode, then their subjective memories, and what is about nobody
+  // last; this only heads them.
   const KIND_TABS = [["", "전체"], ["event", "사건"], ["fact", "사실"], ["view", "주관 기억"], ["person", "이름별"]];
   let memoryKind = "";
-  // 이름별 one name at a time (user 11-09): Go lists the names (people,
-  // things, places, groups) and the chosen name's parts; each part is a
-  // folded box, its changed values the first one. A tab is chosen by the
-  // name's stored reference (two names may read the same; "" is nobody)
+  // 이름별 one name at a time: Go lists the names (people, things, places,
+  // groups) and the chosen name's parts; each part is a folded box, its
+  // changed values the first one. A tab is chosen by the name's stored
+  // reference (two names may read the same; "" is nobody)
   let memoryPerson = null;
   const NOBODY = "특정 이름 없음(세계 규칙 등)";
   const memoryGroup = (kind, m) => kind === "fact" ? m.mode || "그 밖의 사실"
@@ -2452,7 +2503,7 @@
       return el("label", { class: "ac2-group", style: "display:flex;gap:8px;align-items:center;cursor:pointer" }, entry.box, g + " 모두 고르기");
     };
     let offset = 0;
-    let reads = 0; // only the latest read draws: an older answer cannot add rows after it (review 07)
+    let reads = 0; // only the latest read draws: an older answer cannot add rows after it
     const load = async (reset) => {
       const mine = ++reads;
       msg.clear();
@@ -2509,15 +2560,15 @@
     await load(true);
   }
 
-  // Stored turns, read only (user decision 10-28: AC1's turn delete becomes
-  // clearing or remaking the turn's memories).
+  // Stored turns, read only (AC1's turn delete becomes clearing or remaking
+  // the turn's memories).
   const TURN_STATE = { made: ["만듦", "acc"], waiting: ["대기", "warn"], failed: ["실패", "bad"], none: ["없음", ""] };
   function memoryTurnsBox(chatId) {
     const box = el("div", { class: "ac2-field", style: "gap:14px" });
     const list = el("div", { class: "ac2-list" });
     const more = el("button", { type: "button", class: "ac2-btn" }, "더 불러오기");
     const note = msgBox();
-    let offset = 0, reads = 0; // only the latest read draws (review 07)
+    let offset = 0, reads = 0; // only the latest read draws
     const load = async (reset) => {
       const mine = ++reads;
       more.disabled = true;
@@ -2532,8 +2583,8 @@
           const [stateText, tone] = TURN_STATE[t.state] || [t.state, ""];
           const user = el("div", { class: "ac2-text ac2-clamp" }, t.user);
           const reply = el("div", { class: "ac2-text ac2-clamp" }, t.reply);
-          // a turn whose memories are deleted is made again (user 10-29), so
-          // the turn has one action: make it again
+          // a turn whose memories are deleted is made again, so the turn has
+          // one action: make it again
           const ask = () => askHere(slot, t.turn + "턴의 기억을 다시 만들까요? 평론가를 한 번 불러 비용이 들어요. 지금 기억은 새 결과로 바뀌어요.",
             "다시 만들기", async () => {
               const res = await bridge("/memory/turn/remake", { method: "POST", body: JSON.stringify({ chat_id: chatId, turn: t.turn }) });
@@ -2590,12 +2641,28 @@
   // for every chat, each tracked person's state as delivered, the facts read
   // from turns or recorded here, and the person's model settings. The
   // backend decides and calculates; this screen shows and sends.
-  const BODY_KIND = { period_start: "월경 시작", pregnancy_confirmed: "임신 확인", pregnancy_ended: "임신 끝남", recovery_started: "회복 시작", recovery_ended: "회복 끝남", conception_exposure: "임신 가능한 관계" };
+  // the pregnancy model's frozen result on a fact: a result not computed
+  // says why, not "no implantation" (1.1)
+  const BODY_REASON = { explicit_exposure_or_world_setting: "해당 없음", contraception_context_not_modeled: "피임 언급", exposure_context_not_modeled: "정보 부족",
+    model_parameters_unresolved: "설정 불완전", exact_event_date_or_reference_unresolved: "날짜·기준 불명", simulation_seed_unavailable: "준비 전",
+    observed_pregnancy_ongoing: "임신 중", modeled_pregnancy_ongoing: "모형 임신 중" };
+  function bodyResult(r) {
+    if (!r) return "";
+    if (r.status === "evaluated") return (r.implanted ? "모형: 착상" : "모형: 착상 없음") + (r.contraception ? " (피임: " + (BODY_METHOD[r.contraception] || r.contraception) + ")" : "");
+    return "모형: 계산 안 함(" + (BODY_REASON[r.reason] || r.reason || r.status) + ")";
+  }
+  const BODY_KIND = { period_start: "월경 시작", pregnancy_confirmed: "임신 확인", pregnancy_ended: "임신 끝남", recovery_started: "회복 시작", recovery_ended: "회복 끝남", conception_exposure: "임신 가능한 관계", emergency_contraception: "사후 피임", child_named: "아이 이름", paternity_learned: "아버지를 알게 됨" };
+  const BODY_METHOD = { condom: "콘돔", pill: "피임약", withdrawal: "질외사정", iud: "루프", implant: "피하 이식", injection: "피임 주사", patch: "패치·링", magic: "마법", other: "기타" };
   const BODY_SCOPE = { flashback: "회상", planned: "계획", hypothetical: "가정" };
   const BODY_SPEC = [["cycle_days", "주기(일)", "1"], ["variation_days", "주기 ± (일)", "1"], ["period_days", "월경 기간(일)", "1"], ["luteal_min_days", "황체기 최소(일)", "1"],
     ["luteal_max_days", "황체기 최대(일)", "1"], ["viability", "주기 착상 가능성(0~1)", "0.05"], ["peak", "최고 수정 가능성(0~1)", "0.05"], ["gestation_days", "임신 기간(일)", "1"]];
-  // settings typed on the body screen and not saved yet, kept across redraws
-  // (review 12 R09): chat|person|field -> value
+  // how strongly a person feels body changes (1.1, drawn once in Go, editable)
+  const BODY_INTENSITY = [["cramps", "생리통"], ["premenstrual", "월경 전 변화"], ["nausea", "입덧"], ["pregnancy_discomfort", "임신 중 불편"]];
+  const BODY_LEVEL = ["없음", "가벼움", "보통", "심함"];
+  const BODY_SPEED = [["1", "빠름"], ["2", "보통"], ["3", "느림"]]; // recovery after a pregnancy ends
+  const BODY_OUTCOME = { birth: "출산", loss: "유산" };
+  // settings typed on the body screen and not saved yet, kept across
+  // redraws: chat|person|field -> value
   const bodyDrafts = new Map();
   function memoryBodyBox(chatId) {
     const box = el("div", { class: "ac2-field", style: "gap:14px" });
@@ -2608,7 +2675,7 @@
       note.clear();
       const r = await oneWrite(run, box, box);
       if (!r.ok) return note.show(errText(r), false);
-      await refreshShown(); // the screen shown now, also one drawn again meanwhile (review 12 R13)
+      await refreshShown(); // the screen shown now, also one drawn again meanwhile
       note.show(done, true);
     };
     const load = async () => {
@@ -2618,9 +2685,9 @@
       if (!r.ok) return note.show(errText(r), false);
       const v = r.json;
       const save = (k) => async (on) => {
-        // one write at a time, as every other setting (review 12 R03)
+        // one write at a time, as every other setting
         if (writing) { note.show(BUSY_TEXT, false); return false; }
-        const next = { cycle_tracking_enabled: v.cycle_tracking_enabled, automatic_pregnancy_enabled: v.automatic_pregnancy_enabled, [k]: on };
+        const next = { cycle_tracking_enabled: v.cycle_tracking_enabled, automatic_pregnancy_enabled: v.automatic_pregnancy_enabled, wait_for_latest_reply: !!v.wait_for_latest_reply, [k]: on };
         const res = await oneWrite(() => bridge("/body/settings", { method: "POST", body: JSON.stringify(next) }), box, box);
         if (!res.ok) { note.show(errText(res), false); return false; }
         v[k] = on;
@@ -2629,7 +2696,8 @@
       };
       switches.replaceChildren(toggle("ac2-body-cycle", "주기 추적 사용", v.cycle_tracking_enabled, save("cycle_tracking_enabled")),
         toggle("ac2-body-preg", "자동 임신 사용", v.automatic_pregnancy_enabled, save("automatic_pregnancy_enabled")),
-        el("div", { class: "ac2-help" }, "켜면 대화에 나온 월경·임신 같은 일을 기억과 함께 기록하고, 계산한 몸 상태를 기억 블록 끝에 따로 넣어요(신체 몫 " + v.budget + "자, 두 가지를 다 켜도 한 번). 계산 값은 인물들이 아는 사실로 쓰이지 않아요."));
+        toggle("ac2-body-wait", "직전 응답의 기억을 기다린 뒤 계산(응답이 늦어짐)", !!v.wait_for_latest_reply, save("wait_for_latest_reply")),
+        el("div", { class: "ac2-help" }, "켜면 대화에 나온 월경·임신 같은 일을 기억과 함께 기록하고, 계산한 몸 상태를 기억 블록 끝에 따로 넣어요(신체 몫 " + v.budget + "자, 몸 변화 경향 몫 " + v.tendency_budget + "자, 두 가지를 다 켜도 한 번). 계산 값은 인물들이 아는 사실로 쓰이지 않아요."));
       list.replaceChildren();
       if (!v.people.length) list.append(el("div", { class: "ac2-item" }, el("div", { class: "ac2-help" },
         v.cycle_tracking_enabled || v.automatic_pregnancy_enabled ? "아직 신체 일이 기록된 인물이 없어요. 대화에 나오면 그 인물부터 추적해요." : "꺼져 있어요.")));
@@ -2637,8 +2705,9 @@
         const slot = el("div");
         const facts = el("div", { class: "ac2-field" }, ...p.facts.map((f) => {
           const row = el("div", { class: "ac2-top", style: "align-items:center" },
-            el("div", { class: "ac2-main ac2-meta" }, [f.day || "날짜 모름", BODY_KIND[f.kind] || f.kind, BODY_SCOPE[f.scope], f.user ? "직접 기록" : "", (f.partners || []).length ? "상대 " + f.partners.join(", ") : "",
-              f.result ? (f.result.implanted ? "모형: 착상" : "모형: 착상 없음") : ""].filter(Boolean).join(" · ")));
+            el("div", { class: "ac2-main ac2-meta" }, [f.day || "날짜 모름", BODY_KIND[f.kind] || f.kind, BODY_OUTCOME[f.outcome], BODY_SCOPE[f.scope], f.user ? "직접 기록" : "", (f.partners || []).length ? "상대 " + f.partners.join(", ") : "",
+              bodyResult(f.result), f.child ? "아이 " + f.child : "", (f.fathers || []).length ? (f.paternity === "confirmed" ? "아버지 " : "아버지 후보 ") + f.fathers.join(", ") : "",
+              (f.unaware || []).length ? "비밀: " + f.unaware.join(", ") + " 모름" : ""].filter(Boolean).join(" · ")));
           if (f.user) row.append(sbtn("지우기", () => askHere(slot, (f.day || "") + " " + (BODY_KIND[f.kind] || f.kind) + " 기록을 지울까요?", "지우기",
             async () => {
               const res = await bridge("/body/record/delete", { method: "POST", body: JSON.stringify({ chat_id: chatId, id: f.id }) });
@@ -2655,26 +2724,48 @@
         });
         const conceive = el("input", { type: "checkbox", "aria-label": "임신 가능" }); conceive.checked = !!p.spec.can_conceive;
         const cycleOn = el("input", { type: "checkbox", "aria-label": "주기 사용" }); cycleOn.checked = !!p.spec.cycle_enabled;
+        const levels = BODY_INTENSITY.map(([k, label]) => {
+          const sel = el("select", { "aria-label": label }, ...BODY_LEVEL.map((t, i) => el("option", { value: String(i) }, t)));
+          const dk = draftKey("intensity." + k); // a choice not saved yet survives a redraw, as the numbers do
+          sel.value = bodyDrafts.has(dk) ? bodyDrafts.get(dk) : String(p.intensity ? p.intensity[k] : 2);
+          sel.addEventListener("change", () => bodyDrafts.set(dk, sel.value));
+          return sel;
+        });
+        const speedKey = draftKey("intensity.recovery_speed");
+        const speed = el("select", { "aria-label": "회복 속도" }, ...BODY_SPEED.map(([v, t]) => el("option", { value: v }, t)));
+        speed.value = bodyDrafts.has(speedKey) ? bodyDrafts.get(speedKey) : String((p.intensity && p.intensity.recovery_speed) || 2);
+        speed.addEventListener("change", () => bodyDrafts.set(speedKey, speed.value));
         const saveSpec = () => {
           const spec = { can_conceive: conceive.checked, cycle_enabled: cycleOn.checked };
+          const intensity = {};
+          const chosen = levels.map((sel) => sel.value);
+          BODY_INTENSITY.forEach(([k], i) => { intensity[k] = Number(chosen[i]); });
+          const chosenSpeed = speed.value;
+          intensity.recovery_speed = Number(chosenSpeed);
           const sent = BODY_SPEC.map((_, i) => inputs[i].value);
           BODY_SPEC.forEach(([k], i) => { spec[k] = Number(sent[i]); });
           write(slot, async () => {
-            const r = await bridge("/body/person", { method: "POST", body: JSON.stringify({ chat_id: chatId, who: p.who, spec }) });
+            const r = await bridge("/body/person", { method: "POST", body: JSON.stringify({ chat_id: chatId, who: p.who, spec, intensity }) });
             // a value typed after these were sent stays as typed
             if (r.ok) BODY_SPEC.forEach(([k], i) => { if (bodyDrafts.get(draftKey(k)) === sent[i]) bodyDrafts.delete(draftKey(k)); });
+            if (r.ok) BODY_INTENSITY.forEach(([k], i) => { if (bodyDrafts.get(draftKey("intensity." + k)) === chosen[i]) bodyDrafts.delete(draftKey("intensity." + k)); });
+            if (r.ok && bodyDrafts.get(speedKey) === chosenSpeed) bodyDrafts.delete(speedKey);
             return r;
           }, "설정을 저장했어요.");
         };
-        const kind = el("select", { "aria-label": "기록할 일" }, ...["period_start", "pregnancy_confirmed", "pregnancy_ended", "recovery_started", "recovery_ended"].map((k) => el("option", { value: k }, BODY_KIND[k])));
+        const kind = el("select", { "aria-label": "기록할 일" }, ...["period_start", "pregnancy_confirmed", "pregnancy_ended", "recovery_started", "recovery_ended", "emergency_contraception"].map((k) => el("option", { value: k }, BODY_KIND[k])));
         const day = el("input", { type: "text", placeholder: "2026/01/02 또는 Day 12", "aria-label": "작중 날" });
         const record = () => write(slot, () => bridge("/body/record", { method: "POST", body: JSON.stringify({ chat_id: chatId, who: p.who, kind: kind.value, day: day.value.trim() }) }), "기록했어요.");
         list.append(el("div", { class: "ac2-item" },
           el("div", { class: "ac2-title2" }, p.name),
-          ...(p.state.lines.length ? p.state.lines.map((l) => el("div", { class: "ac2-meta" }, l.replace(/^- body [^\[]*/, ""))) : [el("div", { class: "ac2-help" }, "계산할 수 있는 상태가 아직 없어요(작중 날짜를 모르거나 꺼져 있음).")]),
+          p.also && p.also.length ? el("div", { class: "ac2-help" }, "같은 사람으로 읽은 이름: " + p.also.join(", ")) : null,
+          ...(p.state.lines.length ? p.state.lines.filter((l) => !l.startsWith("[")).map((l) => el("div", { class: "ac2-meta" }, l.replace(/^- body [^\[]*/, ""))) : [el("div", { class: "ac2-help" }, "계산할 수 있는 상태가 아직 없어요(작중 날짜를 모르거나 꺼져 있음).")]),
           el("details", { class: "ac2-ver" }, el("summary", {}, "기록된 일 " + p.facts.length + "개"), facts),
           el("details", { class: "ac2-ver" }, el("summary", {}, "사실 직접 기록"), el("div", { class: "ac2-acts" }, kind, day, sbtn("기록", record))),
           el("details", { class: "ac2-ver" }, el("summary", {}, "설정"), el("div", { class: "ac2-grid" }, ...BODY_SPEC.map(([, label], i) => el("label", { class: "ac2-field" }, el("span", { class: "ac2-help" }, label), inputs[i]))),
+            el("div", { class: "ac2-help" }, "몸 변화의 세기(처음에 무작위로 정해져요)"),
+            el("div", { class: "ac2-grid" }, ...BODY_INTENSITY.map(([, label], i) => el("label", { class: "ac2-field" }, el("span", { class: "ac2-help" }, label), levels[i])),
+              el("label", { class: "ac2-field" }, el("span", { class: "ac2-help" }, "회복 속도(임신이 끝난 뒤)"), speed)),
             el("div", { class: "ac2-acts" }, el("label", {}, conceive, " 임신 가능"), el("label", {}, cycleOn, " 주기 사용"), sbtn("설정 저장", saveSpec))),
           slot));
       }
@@ -3016,7 +3107,7 @@
     const list = el("div", { class: "ac2-list" });
     const count = el("span", { class: "ac2-help" });
     const name = (chat) => [chat.char_name, chat.chat_name].filter(Boolean).join(" / ") || "채팅 " + chat.chat_id.slice(0, 8);
-    let reads = 0; // only the latest read draws (review 07)
+    let reads = 0; // only the latest read draws
     // C22/C25: the chats to read before the open chat, in the order chosen
     // here (kept while the tab is drawn again); the backend attaches them
     const pick = [];
@@ -3034,7 +3125,7 @@
       askHere(slot, say, detach ? "연결 풀기" : "이어붙이기", async () => {
         const r = await bridge("/chats/attach", { method: "POST", body: JSON.stringify(request), timeoutMs: 0 });
         if (!r.ok) return r;
-        // only what this request sent leaves the list; chats chosen meanwhile stay (review 11 R03)
+        // only what this request sent leaves the list; chats chosen meanwhile stay
         if (!detach) for (const id of request.chats) { const i = pick.indexOf(id); if (i >= 0) pick.splice(i, 1); }
         await refreshShown();
         msg.show(detach ? "앞부분 과거 연결을 풀었어요." : "앞부분 과거로 이어붙였어요 · 턴 " + r.json.turns + "개, 기억 " + r.json.memories + "개", true);
@@ -3193,8 +3284,10 @@
         hudSettingsChanged();
         hudNote.show("저장했어요.", true);
       };
-      hudBox.append(el("div", { class: "ac2-help" }, "채팅 화면 구석에 기억 만들기 진행을 작게 보여 줘요. 넣은 기억은 이번 턴 탭에서 봐요."),
-        toggle("ac2-hud-on", "채팅 화면에 진행 표시", cur.enabled, save("enabled")), toggle("ac2-hud-compact", "처음에는 한 줄로 접어 두기", cur.compact, save("compact")), hudNote.node);
+      const back = async () => { hudNote.clear(); await hudPlaceReset(); hudNote.show("처음 자리로 돌렸어요.", true); };
+      hudBox.append(el("div", { class: "ac2-help" }, "채팅 화면 구석에 기억 만들기 진행을 작게 보여 줘요. 넣은 기억은 이번 턴 탭에서 봐요. 표시는 끌어서 옮길 수 있고, 자리는 이 기기에 기억해요."),
+        toggle("ac2-hud-on", "채팅 화면에 진행 표시", cur.enabled, save("enabled")), toggle("ac2-hud-compact", "처음에는 한 줄로 접어 두기", cur.compact, save("compact")),
+        el("div", { class: "ac2-row" }, el("button", { type: "button", class: "ac2-btn", id: "ac2-hud-place", on: { click: back } }, "표시 자리 처음으로")), hudNote.node);
     })();
 
     // vectors: fill the missing ones or make them all again, for the chat in
@@ -3206,7 +3299,7 @@
     const scope = el("select", { "aria-label": "정비 대상" }, el("option", { value: "chat" }, "지금 보는 채팅"), el("option", { value: "all" }, "전체 채팅"));
     const error = (r) => ({ embedding_off: "임베딩이 꺼져 있어요. 모델과 API 키 설정을 확인해 주세요.",
       reset_phrase_mismatch: "‘전체 DB 초기화’를 정확히 입력해 주세요." }[r.code] || errText(r));
-    let reads = 0; // only the latest read draws (review 07)
+    let reads = 0; // only the latest read draws
     const showProgress = async () => {
       const mine = ++reads;
       const r = await bridge("/status", { method: "GET" });
@@ -3248,7 +3341,7 @@
       slot, note.node, progress);
     showProgress();
 
-    // the full reset, behind the typed phrase (user decision 10-28)
+    // the full reset, behind the typed phrase
     const reset = el("section", { class: "ac2-box ac2-dangerzone" }, el("h2", { class: "ac2-h2", style: "color:var(--bad)" }, "전체 DB 초기화"));
     const phrase = el("input", { "aria-label": "초기화 확인 문구", placeholder: "전체 DB 초기화", autocomplete: "off" });
     const rnote = msgBox();
@@ -3269,23 +3362,21 @@
     return box;
   }
 
-  // Turn HUD (U6's backend; UI design 10-27 "채팅 안 상태 표시"): one chip on
-  // the chat screen, "AC2 · 직전 턴 기억 …", that opens to how the last
-  // turns' memory is going, with a retry for a failed turn. What was given
-  // stays in the settings' this-turn tab (user 10-28). Every count, stage and retry choice is Go's (/hud).
-  // The chip lives in the host's page (SafeElement, asynchronous); a refused
-  // page permission leaves it off and the rest of the plugin as it is. The
-  // hooks tell it the chat they read (hudSee); it asks again only while a
+  // Turn HUD (U6's backend): one chip on the chat screen, "AC2 · 직전 턴 기억 …",
+  // that opens to how the last turns' memory is going, with a retry for a failed turn. What was given
+  // stays in the settings' this-turn tab. Every count, stage and retry choice is Go's (/hud). The chip
+  // lives in the host's page (SafeElement, asynchronous); a refused page permission leaves it off and the
+  // rest of the plugin as it is. The hooks tell it the chat they read (hudSee); it asks again only while a
   // turn is under way.
   const HUD_STATE = { waiting: "대기", running: "진행 중", done: "완료", failed: "실패", retry_waiting: "다시 시도 대기", off: "사용 안 함", skipped: "건너뜀" };
   const HUD_GEN = { done: ["직전 턴 기억 저장됨", "acc"], running: ["직전 턴 기억 만드는 중…", "warn"], waiting: ["직전 턴 기억 기다리는 중", "warn"],
     retry_waiting: ["직전 턴 기억 다시 시도 대기", "warn"], failed: ["직전 턴 기억 만들지 못함", "bad"], off: ["직전 턴은 기억 안 함", "gray"] };
   const HUD_NOTICE = { response_deleted: "삭제를 반영했어요", member_deleted: "삭제를 반영했어요", turn_deleted: "삭제를 반영했어요", response_replaced: "리롤로 바뀐 답을 반영했어요",
     response_new_generation: "리롤로 바뀐 답을 반영했어요", member_edited: "고친 입력을 반영했어요", response_revised: "고친 답을 반영했어요", turn_off: "사용 안 함(OOC)으로 바뀐 턴", reply_off: "응답의 사용 여부가 바뀌었어요" };
-  // tones (user 11-08 HUD rebuild): blue under way, green saved, red failed, gray off
+  // tones: blue under way, green saved, red failed, gray off
   const HUD_TONE = { run: ["rgba(37,99,235,.14)", "#2563EB"], acc: ["rgba(20,137,126,.16)", "#14897E"], bad: ["rgba(197,48,48,.16)", "#C53030"], gray: ["rgba(128,128,128,.18)", "#7A776E"] };
   const HUD_PREP = { jev: "판정 모델", ai: "AI", ai_jev: "AI + 판정 모델", go: "Go 기본" };
-  const HUD_PREP_FALLBACK = { decision_off: "판정 모델 없음", ai_off: "AI 연결 없음", decision_failed: "판정 모델 실패", ai_failed: "AI 실패", ai_and_decision_failed: "AI·판정 모델 실패", store_failed: "설정 읽기 실패", wide_list_failed: "넓은 목록 실패", final_delivery_failed: "최종 전달 실패", nothing_to_choose: "고를 기억 없음" };
+  const HUD_PREP_FALLBACK = { decision_off: "전처리 설정 안 됨 (판정 모델 없음)", ai_off: "전처리 설정 안 됨 (AI 연결 없음)", decision_failed: "판정 모델 실패", ai_failed: "AI 실패", ai_and_decision_failed: "AI·판정 모델 실패", store_failed: "설정 읽기 실패", wide_list_failed: "넓은 목록 실패", final_delivery_failed: "최종 전달 실패", nothing_to_choose: "고를 기억 없음" };
   const HUD_LINK = { timeout: "응답 시간 초과", connect_failed: "연결할 수 없음", http_error: "백엔드 오류", decode_failed: "응답을 읽지 못함", body_read_failed: "응답을 읽지 못함" };
   const secs = (ms) => (ms / 1000).toFixed(1) + "초";
   // the chip of a view: the earlier turn's generation (made at the next
@@ -3294,14 +3385,14 @@
     if (link) return ["연결 실패", "bad"];
     if (readFail) return ["상태 못 읽음", "bad"];
     const turns = (v && v.turns) || [];
-    // an earlier turn's failure outside the latest two (review 19 B-04)
+    // an earlier turn's failure outside the latest two
     const f = ((v && v.failures) || [])[0];
     const older = f && (f.state === "waiting" ? ["다시 시도 요청함", "run"] : f.state === "running" ? [f.turn + "턴 다시 시도 중", "run"] : [f.turn + "턴 실패" + (f.state === "retry_waiting" ? " · 곧 다시" : ""), "bad"]);
     const t = turns[1] || turns[0];
     if (!t) return older || ["확인 중", "gray"];
     const g = (t.stages || []).find((s) => s.key === "generation") || {};
     if (older && (g.state === "done" || g.state === "off" || !g.state)) return older;
-    // a retry is told from its first call too (review 19 R2-B04)
+    // a retry is told from its first call too
     if (g.state === "running") return [t.retried ? "다시 시도 중 " + t.attempt + "/" + t.attempts : "만드는 중", "run"];
     if (g.state === "waiting") return [t.retried ? "다시 시도 요청함" : "기다리는 중", "run"];
     if (g.state === "retry_waiting") return [t.turn + "턴 실패 · 곧 다시", "bad"];
@@ -3311,15 +3402,18 @@
     return ["확인 중", "gray"];
   }
   // narrative support (E03): what the guide and the input improvement did
-  const NARR_TEXT = { ai_off: "출판사 연결 없음", ai_failed: "AI 실패", store_failed: "설정 읽기 실패", nothing_to_guide: "넣은 비밀 아닌 기억 없음", nothing_kept: "근거 있는 항목 없음",
+  const NARR_TEXT = { ai_off: "출판사 설정 안 됨 (AI 연결 없음)", ai_failed: "AI 실패", store_failed: "설정 읽기 실패", nothing_to_guide: "넣은 비밀 아닌 기억 없음", nothing_kept: "근거 있는 항목 없음",
     no_budget: "예산 0", no_time_left: "시간 부족", no_input_text: "입력 글 없음" };
   const GUIDE_TEXT = { weak: "약하게", mid: "중간", strong: "강하게" };
   function narrLine(n) {
     const quiet = { made: 1, nothing_kept: 1, nothing_to_guide: 1, changed: 1, unchanged: 1 };
     const parts = [];
-    if (n.level) parts.push("가이드 " + (GUIDE_TEXT[n.level] || n.level) + " · " + (n.guide === "made" ? n.kept + "개" + (n.dropped ? " (근거 없어 뺌 " + n.dropped + ")" : "") : NARR_TEXT[n.guide] || n.guide || ""));
+    // the guide and the input stopped for one reason: the reason told once, last
+    const same = n.level && n.input && n.guide && n.guide === n.input_result && !quiet[n.guide];
+    if (n.level) parts.push("가이드 " + (GUIDE_TEXT[n.level] || n.level) + (same ? "" : " · " + (n.guide === "made" ? n.kept + "개" + (n.dropped ? " (근거 없어 뺌 " + n.dropped + ")" : "") : NARR_TEXT[n.guide] || n.guide || "")));
     else if (n.guide) parts.push(NARR_TEXT[n.guide] || n.guide);
-    if (n.input) parts.push(n.input_result === "changed" && n.input === "blend" ? "입력에 기억 녹임" : "입력 " + (n.input_result === "changed" ? "다듬음" : n.input_result === "unchanged" ? "그대로" : "원문 그대로 · " + (NARR_TEXT[n.input_result] || n.input_result || "")));
+    if (n.input) parts.push(n.input_result === "changed" && n.input === "blend" ? "입력에 기억 녹임" : "입력 " + (n.input_result === "changed" ? "다듬음" : n.input_result === "unchanged" ? "그대로" : "원문 그대로" + (same ? "" : " · " + (NARR_TEXT[n.input_result] || n.input_result || ""))));
+    if (same) parts.push(NARR_TEXT[n.guide] || n.guide);
     const warn = (n.guide && !quiet[n.guide]) || (n.input && n.input_result && !quiet[n.input_result]);
     return [warn ? "!" : "✓", "서사 지원 " + secs(n.ms || 0), parts.join(" · "), warn ? "warn" : ""];
   }
@@ -3359,11 +3453,11 @@
     return out;
   }
   function hudStart() {
-    const ui = { chat: "", view: null, doc: null, denied: false, root: null, listeners: [], timer: null, asking: false, again: false, open: null, dismissed: false, epoch: 0, serial: Promise.resolve(), stopped: false, lines: [], lineTurns: [], links: {}, readFail: null, more: null };
+    const ui = { chat: "", view: null, doc: null, denied: false, root: null, listeners: [], timer: null, asking: false, again: false, open: null, dismissed: false, epoch: 0, serial: Promise.resolve(), stopped: false, lines: [], lineTurns: [], links: {}, readFail: null, more: null, pos: null, drag: null, dragged: false };
     const safe = (fn) => (...args) => Promise.resolve().then(() => fn(...args)).catch((e) => { recordPluginError(e); console.warn("[AC2] HUD", e); });
     const cancel = () => { if (ui.timer) clearTimeout(ui.timer); ui.timer = null; };
     const remove = async () => {
-      for (const [target, id] of ui.listeners) await target.removeEventListener("click", id);
+      for (const [target, id, type] of ui.listeners) await target.removeEventListener(type || "click", id);
       ui.listeners = [];
       if (ui.root) await ui.root.remove();
       ui.root = null;
@@ -3375,14 +3469,23 @@
       return n;
     };
     const add = async (parent, tag, text, style) => { const n = await node(tag, text, style); await parent.appendChild(n); return n; };
-    const click = async (n, fn) => { ui.listeners.push([n, await n.addEventListener("click", safe(fn))]); };
+    const click = async (n, fn) => { ui.listeners.push([n, await n.addEventListener("click", safe(fn)), "click"]); };
+    const on = async (n, type, fn) => { ui.listeners.push([n, await n.addEventListener(type, safe(fn)), type]); };
+    // where the HUD sits: moved by dragging its chip, kept on this device as
+    // the offset from where it starts, always inside the screen
+    const POS_KEY = "ac2_hud_pos_v1";
+    // (the whole width stays inside: right at most the screen less the HUD's
+    // width; the chip at least 130px from the top, room for it and its panel)
+    const wrapBottom = (p) => "clamp(0px,calc(35vh + env(safe-area-inset-bottom,0px) - " + (p ? p.dy : 0) + "px),calc(100vh - 130px))";
+    const wrapStyle = (p) => "position:fixed;right:clamp(0px,calc(12px - " + (p ? p.dx : 0) + "px),calc(100vw - min(300px,calc(100vw - 24px))));bottom:" + wrapBottom(p) + ";z-index:1000;width:min(300px,calc(100vw - 24px));display:flex;flex-direction:column-reverse;align-items:flex-end;gap:6px;font:12px/1.5 system-ui,'IBM Plex Sans KR',sans-serif;color:CanvasText;box-sizing:border-box";
+    const keepPos = async () => { try { if (store) await store.setItem(POS_KEY, ui.pos); } catch (e) { recordPluginError(e); } };
     const BTN = "font:inherit;font-size:12px;color:inherit;background:transparent;border:1px solid rgba(128,128,128,.45);border-radius:6px;min-height:30px;padding:0 10px;cursor:pointer";
     const MARK = { "✓": "#14897E", "…": "#2563EB", "!": "#B7791F", "–": "#7A776E" };
     const draw = async () => {
       const v = ui.view;
       const enabled = !!(v && v.settings && v.settings.enabled);
       // a request that did not reach the backend is told even before any
-      // view was read (review 19 B-05); a failed HUD read only once one was
+      // view was read; a failed HUD read only once one was
       const link = (!v || enabled) && ui.links[ui.chat] || null;
       const readFail = enabled && ui.readFail && ui.readFail.chat === ui.chat ? ui.readFail : null;
       const turns = (enabled && v.turns) || [];
@@ -3423,16 +3526,39 @@
       const [bg, dot] = HUD_TONE[tone] || HUD_TONE.gray;
       ui.lines = [];
       ui.lineTurns = [latest, prev === latest ? null : prev].filter(Boolean);
-      // narrow (user 11-08 "좌우로 길게 나오는 느낌"): about 300 px, two-line
-      // entries, stacked from the bottom with the panel above the chip
-      const wrap = await node("section", null, "position:fixed;right:12px;bottom:calc(35vh + env(safe-area-inset-bottom,0px));z-index:1000;width:min(300px,calc(100vw - 24px));display:flex;flex-direction:column-reverse;align-items:flex-end;gap:6px;font:12px/1.5 system-ui,'IBM Plex Sans KR',sans-serif;color:CanvasText;box-sizing:border-box");
+      // narrow: about 300 px, two-line entries, stacked from the
+      // bottom with the panel above the chip
+      // a redraw while the chip is dragged stays where the drag is
+      const at = (ui.drag && ui.drag.at) || ui.pos;
+      const wrap = await node("section", null, wrapStyle(at));
       ui.root = wrap;
-      const chip = await add(wrap, "button", null, "display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 10px;border:0;border-radius:999px;font:inherit;cursor:pointer;color:" + dot + ";background:" + bg + ";box-shadow:0 1px 4px rgba(0,0,0,.12)");
+      const chip = await add(wrap, "button", null, "display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 10px;border:0;border-radius:999px;font:inherit;cursor:pointer;touch-action:none;color:" + dot + ";background:" + bg + ";box-shadow:0 1px 4px rgba(0,0,0,.12)");
       await add(chip, "span", null, "width:7px;height:7px;border-radius:50%;flex:none;background:" + dot);
       await add(chip, "span", "AC2 · " + chipText);
-      await click(chip, async () => { ui.open = !open; await render(); });
+      await click(chip, async () => {
+        if (ui.dragged) { ui.dragged = false; return; } // the end of a drag is no click
+        ui.open = !open; await render();
+      });
+      // dragged by the chip; a press that hardly moved stays a click
+      await on(chip, "pointerdown", (e) => { ui.dragged = false; ui.drag = { x: e.clientX, y: e.clientY, from: ui.pos || { dx: 0, dy: 0 }, at: null }; });
+      await on(body, "pointermove", async (e) => {
+        const d = ui.drag;
+        if (!d || (!d.at && Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 6)) return;
+        d.at = { dx: d.from.dx + e.clientX - d.x, dy: d.from.dy + e.clientY - d.y };
+        await wrap.setStyleAttribute(wrapStyle(d.at));
+      });
+      const drop = async () => {
+        const d = ui.drag;
+        ui.drag = null;
+        if (!d || !d.at) return;
+        ui.pos = d.at; ui.dragged = true;
+        await keepPos();
+        ui.shown = null; await render(); // the panel's height follows the new place
+      };
+      await on(body, "pointerup", drop);
+      await on(body, "pointercancel", drop);
       if (open) {
-        const panel = await add(wrap, "div", null, "width:100%;box-sizing:border-box;max-height:calc(65vh - 24px);overflow:auto;background:Canvas;border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 3px 14px rgba(0,0,0,.14)");
+        const panel = await add(wrap, "div", null, "width:100%;box-sizing:border-box;max-height:max(80px,min(calc(65vh - 24px),calc(100vh - " + wrapBottom(at) + " - 50px)));overflow:auto;background:Canvas;border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 3px 14px rgba(0,0,0,.14)");
         const head = await add(panel, "div", null, "display:flex;align-items:center;gap:8px");
         await add(head, "div", "AC2 기억 처리", "flex:1;font-weight:600;font-size:13px");
         const x = await add(head, "button", "×", BTN + ";min-width:28px;min-height:28px;padding:0;font-size:15px");
@@ -3473,7 +3599,7 @@
           await add(box, "div", link.aux ? "보조 요청(번역 등)이라 기억과는 상관없어요." : "이 요청은 기억 없이 보냈어요.", "opacity:.85");
         }
         if (readFail) {
-          // the view below is the last one read (review 19 B-07)
+          // the view below is the last one read
           const box = await add(panel, "div", null, RED);
           await add(box, "div", "HUD 상태를 읽지 못함", "font-weight:600");
           await add(box, "div", (HUD_LINK[readFail.kind] || readFail.kind || "") + (readFail.status ? " · " + readFail.status : "") + " · " + clock(readFail.at));
@@ -3494,7 +3620,7 @@
             if (detailText) await add(textCol, "div", detailText, "color:#7A776E;word-break:keep-all");
           }
         }
-        // earlier turns' failures outside the latest two (review 19 B-04)
+        // earlier turns' failures outside the latest two
         for (const f of failures.slice(0, 3)) {
           if (f.state === "waiting" || f.state === "running") { await add(panel, "div", f.turn + "턴 · " + (f.state === "running" ? "다시 시도 중" + (f.attempts && f.attempt > 0 ? " · " + f.attempts + "번 중 " + f.attempt + "번째" : "") : "다시 시도 요청함"), "color:#2563EB;margin-top:4px"); continue; }
           await add(panel, "div", f.turn + "턴 · 이전", "color:#7A776E;margin-top:4px");
@@ -3502,7 +3628,7 @@
         }
         if (failures.length > 3) await add(panel, "div", "그 밖에 " + (failures.length - 3) + "턴도 기억을 못 만들었어요", "color:#C53030");
         for (const n of (enabled && v.notices) || []) await add(panel, "div", n.turn + "턴 · " + (HUD_NOTICE[n.kind] || n.kind), "border-radius:8px;padding:6px 10px;background:rgba(183,121,31,.14)");
-        // the memories themselves stay off the chat screen (user 10-28)
+        // the memories themselves stay off the chat screen
         await add(panel, "div", "넣은 기억 내용은 설정의 이번 턴 탭에서 봐요", "color:#7A776E;margin-top:2px");
       }
       if (ui.stopped || unloaded) { await remove(); return; }
@@ -3521,10 +3647,10 @@
         if (epoch !== ui.epoch || ui.stopped || unloaded) return;
         if (r.ok) { ui.view = r.json; ui.readFail = null; await render(); }
         else {
-          // a failed read is told; the last view is not shown as current
-          // (review 19 B-07), and it is read again while a turn was under way
-          // the same failure again keeps its first time: the panel is not
-          // built again for every read (review 19 R2-C01)
+          // a failed read is told; the last view is not shown as current, and
+          // it is read again while a turn was under way the same failure
+          // again keeps its first time: the panel is not built again for
+          // every read
           const was = ui.readFail;
           if (!was || was.chat !== chat || was.kind !== r.kind || was.status !== r.status) ui.readFail = { chat, kind: r.kind, status: r.status, at: new Date().toISOString() };
           await render();
@@ -3546,15 +3672,19 @@
       ui.chat = chat;
       await poll();
     });
+    hudPlaceReset = async () => { ui.pos = null; await keepPos(); ui.shown = null; await render(); };
+    (async () => {
+      try { const p = store && await store.getItem(POS_KEY); if (p && Number.isFinite(p.dx) && Number.isFinite(p.dy)) { ui.pos = p; ui.shown = null; await render(); } } catch (e) { recordPluginError(e); }
+    })();
     hudSettingsChanged = safe(async () => { ui.open = null; ui.denied = false; ui.dismissed = false; ui.shown = null; await poll(); });
     // a memory request that did not reach the backend is shown until one does
     // aux: the request was not the main model's (translation and the like);
-    // the backend gives those no memory, but it cannot say so when it was
-    // not reached, so the host's own request type tells it (review 19 R2-B05)
+    // the backend gives those no memory, but it cannot say so when it was not
+    // reached, so the host's own request type tells it
     hudLink = safe(async (id, res, aux) => {
       if (id === null || id === undefined || id === "") return;
       // an auxiliary request the backend passed over says nothing of the
-      // memory request (review 19 B-06); each chat keeps its own
+      // memory request; each chat keeps its own
       if (res && res.ok && res.json && res.json.skipped) return;
       const chat = String(id);
       if (res && res.ok) delete ui.links[chat];
@@ -3563,7 +3693,7 @@
     });
     cleanups.push(async () => {
       ui.stopped = true; ui.epoch++; cancel();
-      hudSee = () => {}; hudSettingsChanged = () => {}; hudLink = () => {};
+      hudSee = () => {}; hudSettingsChanged = () => {}; hudLink = () => {}; hudPlaceReset = async () => {};
       await ui.serial; await remove();
     });
   }

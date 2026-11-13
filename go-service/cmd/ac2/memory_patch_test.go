@@ -143,8 +143,8 @@ func TestC17UnmergeHTTP(t *testing.T) {
 
 // An index run commits doc_hash on the same memory rows; merge and unmerge
 // must run between worker runs or MariaDB rejects them with 1020 (11-06
-// upgrade test, cross-review 03). A run holding that point (here a
-// maintenance callback, the same lock) keeps both waiting.
+// upgrade test). A run holding that point (here a maintenance callback,
+// the same lock) keeps both waiting.
 func TestC17MergeAndUnmergeWaitForWorkerRuns(t *testing.T) {
 	db, pipe, srcs := u3Fixture(t)
 	j := u3Save(t, db, srcs[0], `{"entities":[{"id":"n1","name":"Keep"},{"id":"n2","name":"Merge"}],"memories":[{"id":"m1","kind":"fact","body":"visible","about":"n2"}]}`)

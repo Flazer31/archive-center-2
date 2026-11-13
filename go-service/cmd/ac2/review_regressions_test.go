@@ -13,9 +13,8 @@ import (
 )
 
 // A loopback failure body is the only provider boundary. No model/embedding
-// service is contacted, and no credentials or user content are read.
-// Since user decision 11-08 the status and HUD show the provider's error text
-// as received; only the credential-shaped value inside it is masked.
+// service is contacted, and no credentials or user content are read. The
+// status and HUD show the provider's error text as received; only the credential-shaped value inside it is masked.
 func TestStatusHUDShowProviderErrorTextMasksCredentials(t *testing.T) {
 	const marker = "SYNTHETIC_INPUT_BODY SYNTHETIC_PROTECTED_NAME"
 	credential := "sk-" + "synthetic-echoed-credential" // two parts: no literal key in source

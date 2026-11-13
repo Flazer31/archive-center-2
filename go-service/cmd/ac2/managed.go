@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -28,9 +29,11 @@ import (
 	"time"
 
 	"archivecenter2/goservice/internal/diagnostics"
+	"archivecenter2/goservice/internal/observe"
 	"archivecenter2/goservice/internal/osfile"
 	"archivecenter2/goservice/internal/secret"
 	"archivecenter2/goservice/internal/serve"
+	"archivecenter2/goservice/internal/store"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -164,6 +167,11 @@ func runManaged(dir string, port int, listen, cert, key, updateRepo, updateAPI s
 			initTool, err = exec.LookPath("mariadb-install-db")
 		}
 		if err == nil {
+			// the backend needs MariaDB store.MinimumMariaDB or newer; an older system server
+			// is told here, before it is started
+			if v := systemMariaDBVersion(ctx, daemon); v != "" && store.CheckMariaDBVersion(v) != nil {
+				return errors.New(mariaDBVersionHelp(v))
+			}
 			log.Print("[2/5] 시스템 MariaDB를 사용합니다. 별도 파일 내려받기·해시 확인은 필요하지 않습니다.")
 			log.Print("[3/5] 시스템 MariaDB 준비 완료. 별도 압축 풀기는 필요하지 않습니다.")
 		}
@@ -303,6 +311,46 @@ func runManaged(dir string, port int, listen, cert, key, updateRepo, updateAPI s
 		<-done
 		return errors.New("MariaDB가 종료되었습니다. 시작 파일로 다시 실행해 주세요")
 	}
+}
+
+// systemMariaDBVersion is the version "mariadbd --version" reports
+// ("mariadbd  Ver 10.11.13-MariaDB-0ubuntu0.24.04.1 for ..." gives
+// "10.11.13"); "" when it cannot be read (then the backend still checks).
+func systemMariaDBVersion(ctx context.Context, daemon string) string {
+	out, err := exec.CommandContext(ctx, daemon, "--no-defaults", "--version").Output() // as it is started
+	if err != nil {
+		return ""
+	}
+	return mariaDBVersionIn(string(out))
+}
+
+var mariaDBVersionRe = regexp.MustCompile(`(?:^|\s)Ver\s+(\d+\.\d+\.\d+)`) // the server version, not a path
+
+func mariaDBVersionIn(s string) string {
+	if m := mariaDBVersionRe.FindStringSubmatch(s); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// databaseOpenHelp is what the start window shows when the backend cannot
+// open the database: the credential-free readiness message, and for an old
+// server (nothing secret in it) which version it is and what to install.
+func databaseOpenHelp(err error) []string {
+	lines := []string{observe.DatabaseHelp}
+	var old store.VersionError
+	if errors.As(err, &old) {
+		lines = append(lines, mariaDBVersionHelp(old.Version))
+	}
+	return lines
+}
+
+// mariaDBVersionHelp tells an old MariaDB apart from other connection
+// problems, with what to install.
+func mariaDBVersionHelp(version string) string {
+	return "이 PC의 MariaDB " + version + "은(는) 지원하지 않습니다. AC2는 MariaDB " + store.MinimumMariaDB + " 이상(같은 계열 안에서)이 필요합니다. " +
+		"배포판 저장소나 MariaDB 공식 저장소(https://mariadb.org/download/)에서 그 이상을 설치한 뒤 다시 실행해 주세요. " +
+		"시스템 MariaDB를 바꾸면 기존에 쓰던 MariaDB 서비스도 함께 바뀌니, 그 DB를 쓰는 다른 프로그램이 있다면 먼저 백업하고 MariaDB의 업그레이드 안내를 확인해 주세요."
 }
 
 func initializeMariaDB(ctx context.Context, dbData, initTool string, c installConfig) error {

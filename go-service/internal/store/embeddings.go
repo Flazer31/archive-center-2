@@ -82,10 +82,10 @@ func (d *DB) SaveEmbeddings(model string, hashes []string, vectors [][]float32) 
 	if _, err := d.sql.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		model VARCHAR(191) NOT NULL,
 		text_hash CHAR(64) NOT NULL,
-		`+"`vector`"+` VECTOR(%d) NOT NULL,
+		`+"`vector`"+` MEDIUMBLOB NOT NULL,
 		created_at DATETIME(6) NOT NULL,
 		PRIMARY KEY (model, text_hash)
-	) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`, table, dim)); err != nil {
+	) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`, table)); err != nil {
 		return err
 	}
 	tx, err := d.sql.Begin()
@@ -111,7 +111,8 @@ func (d *DB) SaveEmbeddings(model string, hashes []string, vectors [][]float32) 
 			binary.LittleEndian.PutUint32(b[4*j:], math.Float32bits(f))
 		}
 		// Keep prepared-statement bytes binary rather than converting them
-		// through the connection's character set before VECTOR validation.
+		// through the connection's character set (tables made before 1.1 hold
+		// them in a VECTOR column, which validates the length).
 		if _, err := tx.Exec(`INSERT INTO `+table+" (model, text_hash, `vector`, created_at) VALUES (?,?,CAST(? AS BINARY),?) ON DUPLICATE KEY UPDATE text_hash=text_hash", model, h, b, now); err != nil {
 			return err
 		}

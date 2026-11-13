@@ -31,11 +31,14 @@ type NameMergePreview struct {
 // These are the reference slots rewritten by resolver.memory, including slots
 // not indexed by MemoryRefs. JSON containment is applied only to typed slots,
 // never body, q, slot, terms or arbitrary text that happens to contain an ID.
-const mergeMemoryRefs = `JSON_CONTAINS(JSON_EXTRACT(detail,
+// A basis naming several sources keeps them joined ("N1,N2"): each one is
+// found too. The one id is bound once.
+const mergeMemoryRefs = `EXISTS (SELECT 1 FROM (SELECT ? AS r) q WHERE JSON_CONTAINS(JSON_EXTRACT(detail,
 	'$.ref','$.at','$.scene','$.about','$.owner','$.to','$.was','$.seen_by',
 	'$.roles.actor','$.roles.target','$.roles.object','$.roles.place','$.roles.speaker','$.roles.listener',
 	'$.effects[*].about','$.effects[*].was','$.basis.from','$.basis.ref',
-	'$.unaware','$.hide_from','$.allow_to','$.knows[*].who','$.knows[*].from','$.knows[*].ref'), JSON_QUOTE(?))=1`
+	'$.unaware','$.hide_from','$.allow_to','$.knows[*].who','$.knows[*].from','$.knows[*].ref'), JSON_QUOTE(q.r))=1
+	OR FIND_IN_SET(q.r, REPLACE(JSON_UNQUOTE(JSON_EXTRACT(detail,'$.basis.from')),' ',''))>0)`
 
 func previewValue(n int64) PreviewCount { return PreviewCount{Count: &n, Status: "available"} }
 

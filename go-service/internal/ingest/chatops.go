@@ -9,4 +9,5 @@ func (c *TextCache) Forget(chat string) {
 		}
 	}
 	delete(c.loaded, chat)
+	delete(c.dropped, chat)
 }

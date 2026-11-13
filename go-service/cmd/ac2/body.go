@@ -14,11 +14,13 @@ import (
 
 // bodyPerson is a tracked person on the body screen.
 type bodyPerson struct {
-	Who   string       `json:"who"`
-	Name  string       `json:"name"`
-	Spec  body.Spec    `json:"spec"`
-	State bodyStateOut `json:"state"`
-	Facts []bodyFact   `json:"facts"`
+	Who       string          `json:"who"`
+	Name      string          `json:"name"`
+	Also      []string        `json:"also,omitempty"` // the other names read as this person
+	Spec      body.Spec       `json:"spec"`
+	Intensity *body.Intensity `json:"intensity,omitempty"`
+	State     bodyStateOut    `json:"state"`
+	Facts     []bodyFact      `json:"facts"`
 }
 
 type bodyStateOut struct {
@@ -39,14 +41,22 @@ type bodyFact struct {
 	User    bool           `json:"user"` // recorded on this screen
 	Q       string         `json:"q,omitempty"`
 	Partner []string       `json:"partners,omitempty"`
+	Outcome string         `json:"outcome,omitempty"` // a pregnancy end's: birth | loss | unknown
 	Result  *body.Exposure `json:"result,omitempty"`
+	// a birth's child, and the father a pregnancy or a birth names with the
+	// people who do not know him (1.1)
+	Child     string   `json:"child,omitempty"`
+	Paternity string   `json:"paternity,omitempty"`
+	Fathers   []string `json:"fathers,omitempty"`
+	Unaware   []string `json:"unaware,omitempty"`
 }
 
 // bodyHandler is the body screen (1.0 E09/E10, AC1's 주기·임신 panel):
 //   - GET /body?chat_id= : the switches and every tracked person's state,
 //     settings and facts
 //   - POST /body/settings {"cycle_tracking_enabled","automatic_pregnancy_enabled"}
-//   - POST /body/person {"chat_id","who","spec"} : a person's model settings
+//   - POST /body/person {"chat_id","who","spec","intensity"} : a person's
+//     model settings and body-change intensity (omitted: the one kept)
 //   - POST /body/record {"chat_id","who","kind","day"} : a fact the user
 //     records (AC1 fact correction); day is a date or "Day N"
 //   - POST /body/record/delete {"chat_id","id"} : removes a recorded fact
@@ -80,13 +90,7 @@ func bodyHandler(pipe *pipeline.Pipeline, db *store.DB) http.HandlerFunc {
 			}
 			var refs []string
 			for _, st := range states {
-				refs = append(refs, st.Who)
-				if p := st.Pregnancy; p != nil {
-					refs = append(refs, p.Candidates...)
-				}
-				for _, f := range st.Facts {
-					refs = append(refs, f.Partners...)
-				}
+				refs = append(refs, st.Refs()...)
 			}
 			names, err := db.NamesByID(refs)
 			if err != nil {
@@ -101,23 +105,42 @@ func bodyHandler(pipe *pipeline.Pipeline, db *store.DB) http.HandlerFunc {
 			}
 			people := []bodyPerson{}
 			for _, st := range states {
-				p, err := db.BodyPerson("chat:"+chat, st.Who)
+				// the settings the state was read with (a merged name's too)
+				p, err := db.BodyPerson("chat:"+chat, st.Owner)
 				if err != nil {
 					storeFailed(w, 500, err)
 					return
 				}
 				out := bodyPerson{Who: st.Who, Name: name(st.Who), Spec: p.Spec, Facts: []bodyFact{}, State: bodyStateOut{Now: st.Now.Text(), Cycle: st.Cycle,
-					CycleRef: st.CycleRef.Text(), RefKind: st.RefKind, Pregnancy: st.Pregnancy, Recovery: st.Recovery, Lines: body.Lines([]body.State{st}, name)}}
+					CycleRef: st.CycleRef.Text(), RefKind: st.RefKind, Pregnancy: st.Pregnancy, Recovery: st.Recovery, Lines: append(body.Lines([]body.State{st}, name), body.TendencyLines([]body.State{st}, name)...)}}
+				out.Intensity = p.Intensity
+				for _, id := range st.Joined {
+					out.Also = append(out.Also, name(id))
+				}
 				for _, f := range st.Facts {
 					partners := []string{}
 					for _, id := range f.Partners {
 						partners = append(partners, name(id))
 					}
-					out.Facts = append(out.Facts, bodyFact{ID: f.ID, Kind: f.Kind, Day: f.Day.Text(), Scope: f.Scope, User: f.User, Q: f.Q, Partner: partners, Result: f.Result})
+					fact := bodyFact{ID: f.ID, Kind: f.Kind, Day: f.Day.Text(), Scope: f.Scope, User: f.User, Q: f.Q, Partner: partners, Outcome: f.Outcome, Paternity: f.Paternity}
+					if f.Child != "" {
+						fact.Child = name(f.Child)
+					}
+					for _, id := range f.Candidates {
+						fact.Fathers = append(fact.Fathers, name(id))
+					}
+					for _, id := range f.Unaware {
+						fact.Unaware = append(fact.Unaware, name(id))
+					}
+					if f.Kind == "conception_exposure" {
+						// a confirmed pregnancy's kept term is not a model result to show
+						fact.Result = f.Result
+					}
+					out.Facts = append(out.Facts, fact)
 				}
 				people = append(people, out)
 			}
-			reply(map[string]any{"cycle_tracking_enabled": on.Cycle, "automatic_pregnancy_enabled": on.Pregnancy, "budget": body.Budget, "people": people})
+			reply(map[string]any{"cycle_tracking_enabled": on.Cycle, "automatic_pregnancy_enabled": on.Pregnancy, "wait_for_latest_reply": on.WaitLatest, "budget": body.Budget, "tendency_budget": body.TendencyBudget, "people": people})
 			return
 		}
 		if r.Method != http.MethodPost {
@@ -138,19 +161,45 @@ func bodyHandler(pipe *pipeline.Pipeline, db *store.DB) http.HandlerFunc {
 			reply(t)
 		case "/person":
 			var req struct {
-				ChatID string    `json:"chat_id"`
-				Who    string    `json:"who"`
-				Spec   body.Spec `json:"spec"`
+				ChatID    string          `json:"chat_id"`
+				Who       string          `json:"who"`
+				Spec      body.Spec       `json:"spec"`
+				Intensity *body.Intensity `json:"intensity"` // omitted: the one kept
 			}
 			if json.NewDecoder(r.Body).Decode(&req) != nil || req.ChatID == "" || req.Who == "" {
 				settingsError(w, 400, "bad_request")
 				return
 			}
-			if !req.Spec.Valid() {
+			if !req.Spec.Valid() || (req.Intensity != nil && !req.Intensity.Valid()) {
 				settingsError(w, 400, "invalid_body_settings")
 				return
 			}
-			if db.SetBodyPerson("chat:"+req.ChatID, body.Person{Who: req.Who, Spec: req.Spec}) != nil {
+			person := body.Person{Who: req.Who, Spec: req.Spec, Intensity: req.Intensity}
+			// a person read with settings kept under a name merged into them
+			// (a name the story says is the same person, 1.1) keeps the model
+			// start and intensity chosen with those settings
+			var scope []memory.ScopedTurn
+			if err := pipe.WithSession("chat:"+req.ChatID, func(s *lifecycle.Session) { scope = memory.ScopeOf(s) }); err != nil {
+				settingsError(w, 500, "store_failed")
+				return
+			}
+			owner, err := db.BodyOwner("chat:"+req.ChatID, scope, req.Who)
+			if err != nil {
+				settingsError(w, 500, "store_failed")
+				return
+			}
+			if owner != req.Who {
+				old, err := db.BodyPerson("chat:"+req.ChatID, owner)
+				if err != nil {
+					settingsError(w, 500, "store_failed")
+					return
+				}
+				person.Ref = old.Ref
+				if person.Intensity == nil {
+					person.Intensity = old.Intensity
+				}
+			}
+			if db.SetBodyPerson("chat:"+req.ChatID, person) != nil {
 				settingsError(w, 500, "store_failed")
 				return
 			}

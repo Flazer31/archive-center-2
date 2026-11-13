@@ -231,7 +231,7 @@ func TestInjectionDeliveryOrder(t *testing.T) {
 		t.Fatalf("story turns lost: %s", a.Raw)
 	}
 	// After a restart the last delivery is read from the database as sent
-	// (user 10-29: a delivery can be checked later).
+	// (a delivery can be checked later).
 	before := a
 	restarted := newStatus(h.db, h.st.mods, h.worker)
 	a = callMem(t, restarted.injectionHandler(), "GET", "/injection?chat_id=ORDER", "")

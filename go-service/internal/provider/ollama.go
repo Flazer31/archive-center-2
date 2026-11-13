@@ -48,7 +48,7 @@ func (o Ollama) Chat(ctx context.Context, prompt string) (Result, error) {
 	b, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, "POST", o.URL+"/api/chat", bytes.NewReader(b))
 	if err != nil {
-		return Result{}, errors.New(scrub(err.Error(), o.Key)) // the address can hold a key (review 18 A-02)
+		return Result{}, errors.New(scrub(err.Error(), o.Key)) // the address can hold a key
 	}
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range headers {

@@ -1,6 +1,6 @@
 package store
 
-// Upgrade test 11-06 (20261106-ac2-upgrade-from-003): an index run commits
+// Upgrade test: an index run commits
 // doc_hash on memories while management writes run. A C16 edit takes its row
 // FOR UPDATE first and succeeds; the unmerge failed (1020) and now runs at the
 // worker's between-runs point (cmd/ac2 TestC17MergeAndUnmergeWaitForWorkerRuns).
@@ -31,7 +31,7 @@ func TestEditSucceedsWhileIndexWritesDocHashes(t *testing.T) {
 	if editErr != nil {
 		t.Fatalf("edit during %d index batches: %v", runs(), editErr)
 	}
-	// the writer really rewrote the row (review 03: a no-op writer also passed)
+	// the writer really rewrote the row (a no-op writer also passed)
 	if written() == 0 {
 		t.Fatalf("the index-like writer changed no row in %d batches", runs())
 	}

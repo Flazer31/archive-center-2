@@ -7,9 +7,9 @@ import (
 	"archivecenter2/goservice/internal/memory"
 )
 
-// Review 05: the memory editor sends only what the user changed. A card drawn
-// before another save ended sends the other fields alone, which must keep the
-// saved body and importance; body/imp and fields together apply in one call.
+// The memory editor sends only what the user changed. A card drawn before
+// another save ended sends the other fields alone, which must keep the saved
+// body and importance; body/imp and fields together apply in one call.
 func TestMemoryEditSendsOnlyChangedFieldsKeepsSavedBodyAndImportance(t *testing.T) {
 	db, _, srcs := u3Fixture(t)
 	j := u3Save(t, db, srcs[0], `{"memories":[{"id":"m1","kind":"fact","body":"original body","imp":2,"status":"old"}]}`)

@@ -231,8 +231,8 @@ func remakeFailedHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate
 		failed := []int{}
 		var readErr error
 		turns := failed
-		// the list and the remake run as one chat operation of the worker
-		// (review 12 R10): a retry the worker saves meanwhile is not undone
+		// the list and the remake run as one chat operation of the worker:
+		// a retry the worker saves meanwhile is not undone
 		op := func() error {
 			if err := pipe.WithSession("chat:"+req.ChatID, func(s *lifecycle.Session) {
 				for i, t := range memory.Own(s) {

@@ -110,15 +110,17 @@ func TestA27LateOriginalConfirmationAndRetry(t *testing.T) {
 			if len(s.ActiveTurns()) != 1 || !current.Readable() || current.Responses[0].Gen != "g2" || current.Key() == original.Key() || turn.Confirmed != confirmed || row.Revisions[len(row.Revisions)-1].Confirmed != confirmed {
 				t.Fatalf("catchup=%+v turn=%+v revisions=%+v", current, turn, row.Revisions)
 			}
-			n := len(row.Revisions)
+			// only the newest text is kept: a retry makes no new text (same
+			// seq), an edit replaces it with a later one
+			seq := row.Revisions[len(row.Revisions)-1].Seq
 			s.Apply(snap(lifecycle.SourceBeforeRequest, "", "같은 본문", false))
 			s.Apply(snap(lifecycle.SourceLoad, "", "같은 본문", false))
-			if len(row.Revisions) != n || SourceOf(s.Key, turn).Key() != current.Key() || turn.Confirmed != confirmed {
+			if len(row.Revisions) != 1 || row.Revisions[0].Seq != seq || SourceOf(s.Key, turn).Key() != current.Key() || turn.Confirmed != confirmed {
 				t.Fatal("retry changed revision/job/completion")
 			}
 			s.Apply(snap(lifecycle.SourceLoad, "", "편집 본문", false))
 			rev := row.Revisions[len(row.Revisions)-1]
-			if len(row.Revisions) != n+1 || rev.GenerationID != "g2" || rev.Confirmed || turn.Confirmed != confirmed {
+			if len(row.Revisions) != 1 || rev.Seq <= seq || rev.Data != "편집 본문" || rev.GenerationID != "g2" || rev.Confirmed || turn.Confirmed != confirmed {
 				t.Fatalf("edit changed contract: %+v", row.Revisions)
 			}
 			t.Logf("confirmed=%v original_seq=%d current_seq=%d revisions=%+v", confirmed, original.Responses[0].Seq, current.Responses[0].Seq, row.Revisions)

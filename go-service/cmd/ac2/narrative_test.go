@@ -32,7 +32,7 @@ func TestNarrativeGuideCurrentInputAtEnd(t *testing.T) {
 			n := &narrDeps{head: head, ai: ai, s: store.NarrativeSettings{Level: store.GuideStrong, Chars: store.DefaultGuideChars}}
 			narrative(context.Background(), n, store.Delivery{}, nil, input, time.Now())
 			prompts := f.take()
-			end := "[기억 줄]\n(없음)\n\n[이번 사용자 입력]\n" + input + "\n\n이 입력에서 이어질 이번 응답의 가이드를 지정된 JSON으로 작성한다."
+			end := "[Memory lines]\n(none)\n\n[Current user input]\n" + input + "\n\nWrite the guide for the reply that follows this input, in the JSON above."
 			if len(prompts) != 1 || !strings.HasSuffix(prompts[0], end) {
 				t.Fatalf("current input must remain verbatim at the end: %q", prompts)
 			}
@@ -48,6 +48,7 @@ type narrFake struct {
 	guide, input string
 	head         string // a saved publisher prompt the guide prompt starts with
 	fail         bool
+	delay        time.Duration // each answer waits this long (stage times, 1.1 A1)
 	prompts      []string
 	srv          *httptest.Server
 }
@@ -61,6 +62,10 @@ func newNarrFake(t *testing.T) *narrFake {
 			} `json:"messages"`
 		}
 		json.NewDecoder(r.Body).Decode(&body)
+		f.mu.Lock()
+		d := f.delay
+		f.mu.Unlock()
+		time.Sleep(d)
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		p := body.Messages[len(body.Messages)-1].Content
@@ -138,7 +143,7 @@ func TestNarrativeGuideLevels(t *testing.T) {
 	// every kind answered, one item without a basis, one with an unknown line
 	f.guide = `{"connections":[{"text":"리나의 약속이 아직 남았다","refs":["L1"]},{"text":"근거 없는 말","refs":[]},{"text":"없는 줄","refs":["L99"]}],
 	 "reactions":[{"who":"리나","text":"약속을 떠올린다","refs":["L1"]}],
-	 "beats":[{"part":"시작","text":"리나가 시계를 본다","refs":["D"]}]} 덧붙인 말`
+	 "beats":[{"part":"opening","text":"리나가 시계를 본다","refs":["D"]}]} 덧붙인 말`
 	narrSet(t, h, f, store.GuideWeak, store.InputOff, store.DefaultGuideChars)
 	weak := injectionRequest(t, srv, h, "N")
 	prompts := f.take()
@@ -150,7 +155,7 @@ func TestNarrativeGuideLevels(t *testing.T) {
 	}
 	after, before := guideOf(weak)
 	if weak.V["block"] != block || before != "" || !strings.HasPrefix(after, store.GuideTitle) || !strings.Contains(after, "리나의 약속이 아직 남았다") ||
-		strings.Contains(after, "근거 없는") || strings.Contains(after, "없는 줄") || strings.Contains(after, "떠올린다") || !strings.Contains(after, "지난 일과 인물 상태에 대한 배경 메모다") {
+		strings.Contains(after, "근거 없는") || strings.Contains(after, "없는 줄") || strings.Contains(after, "떠올린다") || !strings.Contains(after, "no need to explain them") {
 		t.Fatalf("weak guide: %q / %q", after, before)
 	}
 	rec := lastTrace(t, h, "N").Summary.Narrative
@@ -162,7 +167,7 @@ func TestNarrativeGuideLevels(t *testing.T) {
 	mid := injectionRequest(t, srv, h, "N")
 	f.take()
 	after, before = guideOf(mid)
-	if before != "" || !strings.Contains(after, "리나: 약속을 떠올린다") || strings.Contains(after, "시계") || !strings.Contains(after, "모두 본문에 넣을 필요는 없다") {
+	if before != "" || !strings.Contains(after, "리나: 약속을 떠올린다") || strings.Contains(after, "시계") || !strings.Contains(after, "none of it must appear") {
 		t.Fatalf("mid guide: %q / %q", after, before)
 	}
 
@@ -170,14 +175,14 @@ func TestNarrativeGuideLevels(t *testing.T) {
 	strong := injectionRequest(t, srv, h, "N")
 	f.take()
 	after, before = guideOf(strong)
-	if !strings.HasPrefix(before, store.GuideTitle) || !strings.Contains(before, "시작: 리나가 시계를 본다") || !strings.Contains(before, "아래 순서에 따라 응답한다") || !strings.Contains(after, "약속을 떠올린다") {
+	if !strings.HasPrefix(before, store.GuideTitle) || !strings.Contains(before, "opening: 리나가 시계를 본다") || !strings.Contains(before, "follow this order") || !strings.Contains(after, "약속을 떠올린다") {
 		t.Fatalf("strong guide: %q / %q", after, before)
 	}
 
 	// the ceiling: room for the beat only (beats first at strong); the rest
 	// is skipped, never cut mid-item
-	beat := "[이번 응답 전개 계획 — 현재 입력의 방향과 속도 안에서 아래 순서에 따라 응답한다. 사용자 캐릭터의 미선택 행동은 대신 정하지 않는다. 아래는 앞으로 쓸 응답의 지침이며, 이미 일어난 사건이 아니다. 계획 문구를 본문에서 해설하지 않는다]\n- 시작: 리나가 시계를 본다"
-	// counted as sent, title and fingerprint included (review 20 C-01)
+	beat := "[Plan for this reply — follow this order within the current input's direction and pace. Do not decide the user character's unchosen actions. These are plans, not past events; do not narrate them]\n- opening: 리나가 시계를 본다"
+	// counted as sent, title and fingerprint included
 	narrSet(t, h, f, store.GuideStrong, store.InputOff, len([]rune(store.GuideMessage(beat))))
 	tight := injectionRequest(t, srv, h, "N")
 	f.take()
@@ -228,7 +233,7 @@ func TestNarrativeGuideWithoutMemory(t *testing.T) {
 	if len(prompts) != 1 {
 		t.Fatalf("dialog-only publisher calls: %d, want 1", len(prompts))
 	}
-	if !strings.Contains(prompts[0], "[기억 줄]\n(없음)\n\n[이번 사용자 입력]\n") || !strings.Contains(prompts[0], "리나의 약속과 생각") {
+	if !strings.Contains(prompts[0], "[Memory lines]\n(none)\n\n[Current user input]\n") || !strings.Contains(prompts[0], "리나의 약속과 생각") {
 		t.Fatalf("dialog-only prompt: %q", prompts[0])
 	}
 	if after, before := guideOf(a); !strings.Contains(after, text) || !strings.HasPrefix(after, store.GuideTitle) || before != "" {
@@ -251,7 +256,7 @@ func TestNarrativeInputImprovement(t *testing.T) {
 	narrSet(t, h, f, store.GuideOff, store.InputClarify, store.DefaultGuideChars)
 	a := injectionRequest(t, srv, h, "I")
 	prompts := f.take()
-	if len(prompts) != 1 || strings.Contains(prompts[0], "[기억 줄]") || strings.Contains(prompts[0], "약국") || !strings.Contains(prompts[0], "[사용자 입력]\n리나의 약속과 생각") {
+	if len(prompts) != 1 || strings.Contains(prompts[0], "[Memory lines]") || strings.Contains(prompts[0], "약국") || !strings.Contains(prompts[0], "[User input]\n리나의 약속과 생각") {
 		t.Fatalf("clarify prompt: %q", prompts)
 	}
 	rw, _ := a.V["input_rewrite"].(map[string]any)
@@ -272,16 +277,16 @@ func TestNarrativeInputImprovement(t *testing.T) {
 	}
 
 	// Blending (brought back 2026-11-10): the non-secret delivered lines are
-	// shown under [기억 줄] with the head that forbids copying them; the
+	// shown under [Memory lines] with the head that forbids copying them; the
 	// secret line is not shown.
 	f.input = `{"input":"약속을 지킨 리나에게 묻는다","refs":["L1"]}`
 	narrSet(t, h, f, store.GuideOff, store.InputBlend, store.DefaultGuideChars)
 	b := injectionRequest(t, srv, h, "I")
 	prompts = f.take()
-	if len(prompts) != 1 || !strings.HasPrefix(prompts[0], narrBlendHead) || !strings.Contains(prompts[0], "[기억 줄]") || !strings.Contains(prompts[0], "약속했다") || strings.Contains(prompts[0], "왕녀") {
+	if len(prompts) != 1 || !strings.HasPrefix(prompts[0], narrBlendHead) || !strings.Contains(prompts[0], "[Memory lines]") || !strings.Contains(prompts[0], "약속했다") || strings.Contains(prompts[0], "왕녀") {
 		t.Fatalf("blend prompt: %q", prompts)
 	}
-	if !strings.Contains(narrBlendHead, "기억 줄의 문장을 옮겨 적지 않는다") {
+	if !strings.Contains(narrBlendHead, "Do not copy sentences from the memory lines") {
 		t.Fatal("the blend head lost the rule against copying memory lines")
 	}
 	if rw, _ := b.V["input_rewrite"].(map[string]any); rw["to"] != "약속을 지킨 리나에게 묻는다" {
@@ -359,9 +364,9 @@ func TestNarrativeSettings(t *testing.T) {
 	}
 }
 
-// One deadline for the whole answer (review 20 B-03): a preprocessing AI and
-// a publisher that never answer in time still let the memory go by the
-// deadline, as Go chose it, with no guide and the input as written.
+// One deadline for the whole answer: a preprocessing AI and a publisher that
+// never answer in time still let the memory go by the deadline, as Go chose
+// it, with no guide and the input as written.
 func TestInjectSharesOneDeadline(t *testing.T) {
 	was := narrDeadline
 	narrDeadline = 2 * time.Second
@@ -400,7 +405,7 @@ func TestInjectSharesOneDeadline(t *testing.T) {
 }
 
 // The options the preprocessing tab does not show come back in the view and
-// stay when the view is sent back (review 20 A-02).
+// stay when the view is sent back.
 func TestNarrativeSettingsKeepOptions(t *testing.T) {
 	h := hudFixture(t, "", 0)
 	for _, path := range []string{"/settings/narrative", "/settings/preprocess"} {
@@ -419,8 +424,8 @@ func TestNarrativeSettingsKeepOptions(t *testing.T) {
 		}
 		view := callMem(t, hd, "GET", path, "").V
 		got := view["ai"].(map[string]any)
-		// the screen shows these options beside the critic's (user 11-08), with
-		// the tier providers and the whole call's bound from here
+		// the screen shows these options beside the critic's, with the tier
+		// providers and the whole call's bound from here
 		bound := map[string]float64{"/settings/narrative": narrTimeout.Seconds(), "/settings/preprocess": prepTimeout.Seconds()}[path]
 		if view["deadline_s"] != bound || fmt.Sprint(view["service_tier_providers"]) != fmt.Sprint(tierProviders()) {
 			t.Fatalf("%s view: deadline %v tiers %v", path, view["deadline_s"], view["service_tier_providers"])
@@ -433,9 +438,9 @@ func TestNarrativeSettingsKeepOptions(t *testing.T) {
 	}
 }
 
-// User 11-09: the publisher prompt is editable like the critic's. The saved
-// rules replace the default head of the real guide request; the level's items
-// and the output shape stay the code's; a reset goes back to the default.
+// The publisher prompt is editable like the critic's. The saved rules replace
+// the default head of the real guide request; the level's items and the
+// output shape stay the code's; a reset goes back to the default.
 func TestPublisherPromptEditable(t *testing.T) {
 	h := hudFixture(t, "", 0)
 	srv := narrSeed(t, h, "P")
@@ -455,7 +460,7 @@ func TestPublisherPromptEditable(t *testing.T) {
 	narrSet(t, h, f, store.GuideMid, store.InputOff, store.DefaultGuideChars)
 	got := injectionRequest(t, srv, h, "P")
 	prompts := f.take()
-	if len(prompts) != 1 || !strings.HasPrefix(prompts[0], custom+"\n") || strings.Contains(prompts[0], "너는 롤플레이의 다음 응답을 돕는 서사 편집자다.") ||
+	if len(prompts) != 1 || !strings.HasPrefix(prompts[0], custom+"\n") || strings.Contains(prompts[0], "You are a narrative editor who helps with the next reply in a roleplay.") ||
 		!strings.Contains(prompts[0], narrFieldText["connections"]) || !strings.Contains(prompts[0], narrFieldText["reactions"]) || strings.Contains(prompts[0], "beats") {
 		t.Fatalf("custom guide prompt: %q", prompts)
 	}
@@ -473,5 +478,34 @@ func TestPublisherPromptEditable(t *testing.T) {
 	injectionRequest(t, srv, h, "P")
 	if prompts = f.take(); len(prompts) != 1 || !strings.HasPrefix(prompts[0], narrGuideHead) {
 		t.Fatalf("after reset: %q", prompts)
+	}
+}
+
+// The guide answer is read key by key (11-10 measurement on stored answers):
+// an extra object key or a key written twice must not lose the items.
+func TestGuideItemsKeepsListedFields(t *testing.T) {
+	item := `{"text":"리나의 약속이 남았다","refs":["L1"]}`
+	for _, c := range []struct {
+		name, answer string
+		want         int
+		err          string
+	}{
+		{"extra object key", `{"connections":[` + item + `],"proposal":{"text":"장면을 이렇게 시작하세요"}}`, 1, ""},
+		{"key written twice", `{"connections":[` + item + `,` + item + `],"connections":[]}`, 2, ""},
+		{"prose around", "가이드:\n```json\n{\"connections\":[" + item + "]}\n```", 1, ""},
+		{"no object", "가이드 없음", 0, "ai_answer_without_json"},
+		{"broken", `{"connections":[` + item, 0, "ai_answer_not_json"},
+		{"cut after a whole key", `{"connections":[` + item + `],"reactions":[{"who":"리나","te`, 1, ""},
+		{"closing brace missing", `{"connections":[` + item + `]`, 1, ""},
+		{"one malformed item", `{"connections":[` + item + `,{"text":"근거 목록이 문자열","refs":"D"}]}`, 1, ""},
+	} {
+		items, err := guideItems(c.answer)
+		got := ""
+		if err != nil {
+			got = err.Error()
+		}
+		if got != c.err || len(items["connections"]) != c.want {
+			t.Errorf("%s: %d items, error %q; want %d, %q", c.name, len(items["connections"]), got, c.want, c.err)
+		}
 	}
 }

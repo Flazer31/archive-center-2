@@ -9,6 +9,8 @@ import (
 	"io"
 	"regexp"
 	"strings"
+
+	"archivecenter2/goservice/internal/memory"
 )
 
 // OriginalStatus says where a response row's stored text came from.
@@ -122,5 +124,9 @@ func storyDate(v string) (string, bool) {
 	if json.Unmarshal([]byte(v), &s) == nil {
 		v = strings.TrimSpace(s)
 	}
-	return v, datePattern.MatchString(v)
+	if datePattern.MatchString(v) {
+		return v, true
+	}
+	// a Korean date ("1423년 5월 15일"), stored as numbers
+	return memory.ReadDate(v)
 }

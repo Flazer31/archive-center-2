@@ -163,8 +163,7 @@ func TestSeenMarkersSurviveARestart(t *testing.T) {
 // A branch from the parent's last reply, which the parent has not made yet
 // (no next input there): the branch's first input confirms its copy, and
 // the branch makes it as its own memory (as AC1, a branch never makes the
-// parent's; ASTRA-RECHECK-53 2 gap). The parent makes its own when it goes
-// on. Both id shapes.
+// parent's). The parent makes its own when it goes on. Both id shapes.
 func TestBranchFromTheParentsPendingReply(t *testing.T) {
 	for _, ids := range []string{"kept", "new"} {
 		t.Run(ids, func(t *testing.T) {

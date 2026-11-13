@@ -48,7 +48,7 @@ func factModeRank(mode string) string {
 //   - POST /memory/delete {"chat_id","id"} or {"chat_id","ids": [...]} : deletes the selection
 //
 // A branch's memories read from its parent are listed, marked inherited,
-// and refused for a change (inherited_read_only; user decision 10-28).
+// and refused for a change (inherited_read_only).
 // st, when set, lists the changes in the recent activity.
 func memoriesHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate.Worker, st *status) http.HandlerFunc {
 	// list reads the chat's memories; turn > 0 reads that turn's only (the
@@ -117,7 +117,7 @@ func memoriesHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate.Wor
 			var history []store.ListedMemory
 			for _, m := range all { // in the order made; sorted below
 				// what the screen shows of it: its body, names and slot, and
-				// the names and values its effects change (review 11-09 A1)
+				// the names and values its effects change
 				shown := m.Body + "\n" + m.About + "\n" + m.Owner + "\n" + m.Slot
 				for _, e := range m.Effects {
 					shown += "\n" + e.About + "\n" + e.Slot + "\n" + e.Before + "\n" + e.Value
@@ -142,10 +142,10 @@ func memoriesHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate.Wor
 			}
 			// The latest turn first: a remake inserts new ids for an older
 			// turn, so turn order, rather than insertion order, is the memory
-			// screen's order; a turn's memories keep the order made. One
-			// kind is grouped as the screen shows it (user 10-28: by item
-			// like AC1): facts by mode, views by whose they are.
-			// all kinds: a turn's events, then facts, then views
+			// screen's order; a turn's memories keep the order made. One kind
+			// is grouped as the screen shows it (by item like AC1): facts by
+			// mode, views by whose they are. all kinds: a turn's events, then
+			// facts, then views
 			group := func(m store.ListedMemory) string { return "" }
 			rank := map[string]int{"event": 1, "fact": 2, "view": 3}
 			switch kind {
@@ -176,19 +176,19 @@ func memoriesHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate.Wor
 				}
 				return kind == "" && rank[kept[i].Kind] < rank[kept[j].Kind]
 			})
-			// by name, one name at a time (user 11-09: a tab per name, its
-			// parts folded): people lists every name in the order above, by
-			// its stored reference (two names may read the same), with how
-			// many each has (ref "" is about nobody); person=<ref> keeps one,
-			// and parts counts that name's parts (a fact's mode, or 주관 기억)
+			// by name, one name at a time (a tab per name, its parts folded):
+			// people lists every name in the order above, by its stored
+			// reference (two names may read the same), with how many each has
+			// (ref "" is about nobody); person=<ref> keeps one, and parts
+			// counts that name's parts (a fact's mode, or 주관 기억)
 			var whoList []map[string]any
 			var parts []map[string]any
 			var changes []map[string]any
 			if kind == "person" {
-				// a name's changed values (user 11-09: a thing like a holy sword
-				// keeps its record and its values carry on): each effect of an
-				// event about it (before -> value), and each fact or view of it a
-				// later record replaced, oldest first
+				// a name's changed values (a thing like a holy sword keeps its
+				// record and its values carry on): each effect of an event about
+				// it (before -> value), and each fact or view of it a later
+				// record replaced, oldest first
 				type change struct {
 					ref, name string
 					row       map[string]any
@@ -431,7 +431,7 @@ func memoriesHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate.Wor
 				}
 			}
 			// a turn left with none of its own memories is made again
-			// (user 10-29: a deletion is seen and the turn regenerated)
+			// (a deletion is seen and the turn regenerated)
 			remade := []int{}
 			if !edit {
 				gone := map[string]bool{}

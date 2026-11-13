@@ -21,6 +21,9 @@ type Known struct {
 type KnownName struct {
 	ID, Name, Type, Q string
 	Turn              int
+	// Body is the person's latest recorded profile ("female, 악마"), shown
+	// so the model does not record it again (1.1)
+	Body string
 }
 
 type KnownRelation struct {
@@ -75,10 +78,10 @@ type KnownEffect struct {
 // a replaced memory are replaced with it. A record nobody points to is the
 // end of its chain.
 //
-// A was replaces a value, not everything the record it names holds (live
-// chat 2026-11-10: a turn-1 fact "18세 … 15냥 … 저택에 있다" was named by
-// later changes of the money, the place and a skill, and the age nobody
-// changed was never read again; an event that introduced a person was named
+// A was replaces a value, not everything the record it names holds (a
+// turn-1 fact of a person's age, money and place was named by later changes
+// of the money, the place and a skill, and the age nobody changed was never
+// read again; an event that introduced a person was named
 // by a later change of the money it had cost):
 //   - a fact that records of two or more other slots name, and none of its
 //     own slot, stays: it held several values and each record changed its
@@ -284,11 +287,11 @@ func SelectWithin(k Known, text string, earlier []string, max int) (Selection, i
 	}
 	// what always stays is kept even when the record that brought it goes.
 	// So is an event that leaving out would not make shorter: left out, an
-	// event still gives the current values it set for a shown name (and
-	// the status it gave a shown obligation) on lines of their own, each
-	// with its turn; when those are as long as the event shown whole, the
-	// range would grow as more is left out (Sol review 11-09 F1: one record
-	// out fitted, two did not), so it stays.
+	// event still gives the current values it set for a shown name (and the
+	// status it gave a shown obligation) on lines of their own, each with
+	// its turn; when those are as long as the event shown whole, the range
+	// would grow as more is left out (one record out fitted, two did not),
+	// so it stays.
 	shown := map[string]bool{}
 	for _, n := range full.Names {
 		shown[n.ID] = true
@@ -752,7 +755,7 @@ func selectKnown(k Known, text string, earlier []string, exclude, pin map[string
 // countTurns adds to n[w], for each word, the number of texts it is in. The
 // words make one matching automaton (Aho-Corasick over bytes: a UTF-8 word
 // found in UTF-8 text is found at character boundaries), and each text is
-// read once, byte by byte, whatever it repeats (ASTRA-RECHECK-82).
+// read once, byte by byte, whatever it repeats.
 func countTurns(words []string, texts []string, n map[string]int) {
 	type node struct {
 		next map[byte]*node
@@ -874,7 +877,7 @@ func refsOf(m Memory) []string {
 		out = append(out, e.About)
 	}
 	if m.Basis != nil {
-		out = append(out, m.Basis.From)
+		out = append(out, SourceParts(m.Basis.From)...)
 	}
 	return out
 }
@@ -916,13 +919,13 @@ func isName(s string, names []string) bool {
 	return false
 }
 
-// When is when a memory happened as it is read (C12, user 11-06: every
-// memory has a date, so later features read dates without error): Text is
-// the time and From names where it came from — "time" (its own time),
-// "at" (the time of the event it comes from), "turn" (the recorded date of
-// the turn that event or the memory itself was written in). Both are empty
-// only when no date is known at all (a turn whose passage of days is not
-// known, made before 0.0.4).
+// When is when a memory happened as it is read (C12: every memory has a
+// date, so later features read dates without error): Text is the time and
+// From names where it came from — "time" (its own time), "at" (the time of
+// the event it comes from), "turn" (the recorded date of the turn that
+// event or the memory itself was written in). Both are empty only when no
+// date is known at all (a turn whose passage of days is not known, made
+// before 0.0.4).
 type When struct {
 	Text string `json:"when,omitempty"`
 	From string `json:"when_from,omitempty"`

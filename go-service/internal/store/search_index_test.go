@@ -81,7 +81,7 @@ func TestReverseLookupsHaveIndexes(t *testing.T) {
 
 // Values as long as the stored memory allows (a long body word, a whole
 // slot, an unresolved reference, a mention's target) are stored and indexed
-// whole: the derived index never refuses a memory (ASTRA-RECHECK-67 F1).
+// whole: the derived index never refuses a memory.
 func TestLongValuesAreStoredAndIndexedWhole(t *testing.T) {
 	db := testDB(t)
 	s := twoTurnSession()

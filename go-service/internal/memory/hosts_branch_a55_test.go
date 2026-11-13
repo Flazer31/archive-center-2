@@ -77,8 +77,10 @@ func TestA55OldRevisionAndGrandchildBeforeRecord(t *testing.T) {
 			}
 			offApply(c, lifecycle.SourceLoad, append(cr, marker("P", "a"))...)
 			record(t, c, loaderOf(p, c))
-			if got := scopeWith(t, c, p); got[0].Source.Key() != oldkey {
-				t.Fatal("direct parent's old revision lost")
+			// the parent kept only its newest text: the child, holding the
+			// old one, reads its own turn and never the parent's newer reply
+			if got := scopeWith(t, c, p); got[0].Inherited || got[0].Source.Key() == oldkey || got[0].Source.Responses[0].Data != "old" {
+				t.Fatalf("child holding the parent's overwritten text: %+v", got[0])
 			}
 			g := lifecycle.NewSession("chat:G")
 			gr := append([]lifecycle.Row{}, cr...)

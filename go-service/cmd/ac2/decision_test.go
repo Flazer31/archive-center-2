@@ -50,7 +50,7 @@ func TestDecisionSettings(t *testing.T) {
 		}
 		return ids
 	}
-	// the local Ollama is not offered (user 11-08) unless already saved
+	// the local Ollama is not offered unless already saved
 	if a := call("GET", "/settings/decision", ""); a.Code != 200 || a.V["provider"] != "" || a.V["key_set"] != false || strings.Join(offered(a), ",") != "ollama_cloud,typesafe" {
 		t.Fatalf("empty view %d %s", a.Code, a.Raw)
 	}
@@ -98,7 +98,7 @@ func TestDecisionSettings(t *testing.T) {
 	if a := call("POST", "/settings/decision", `{"provider":"ollama","url":"`+srv.URL+`"}`); a.V["key_set"] != false {
 		t.Fatalf("another provider kept the key: %s", a.Raw)
 	}
-	// a reply without the test question's answer says so (review 16 B-01)
+	// a reply without the test question's answer says so
 	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"answers":{}}`) }))
 	defer empty.Close()
 	call("POST", "/settings/decision", `{"provider":"ollama","url":"`+empty.URL+`"}`)

@@ -184,13 +184,13 @@ func TestPDFTransportInjectKeepsSelection(t *testing.T) {
 		}
 		delete(response, "delivery_id")
 	}
-	delete(delegated, "total_ms")
-	delete(delegated, "embed_ms")
+	// timings differ between requests (stages: 1.1 A1)
+	for _, m := range []map[string]any{delegated, pdf, baseline} {
+		delete(m, "total_ms")
+		delete(m, "embed_ms")
+		delete(m, "stages")
+	}
 	delete(pdf, "transport")
-	delete(pdf, "total_ms")
-	delete(pdf, "embed_ms")
-	delete(baseline, "total_ms")
-	delete(baseline, "embed_ms")
 	if !reflect.DeepEqual(pdf, baseline) || !reflect.DeepEqual(delegated, baseline) {
 		t.Fatalf("transport changed delivery: %#v vs %#v", pdf, baseline)
 	}

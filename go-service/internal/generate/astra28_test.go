@@ -176,8 +176,8 @@ func TestA28HistoryReadinessDoesNotConfirmTurns(t *testing.T) {
 	w := NewWorker(db, m, "fake", time.Second)
 	s := lifecycle.NewSession("chat:A")
 	s.Apply(snap(lifecycle.SourceLoad, row("u1", "user", "", "하나"), row("a1", "char", "g1", "첫째"), row("u2", "user", "", "둘"), row("a2", "char", "g2", "둘째"), row("u3", "user", "", "셋"), row("a3", "char", "g3", "셋째")))
-	// history is not made by itself (user decision 10-23: a range, as AC1);
-	// the user asks for the oldest two, then the rest from the most recent
+	// history is not made by itself (a range, as AC1); the user asks for
+	// the oldest two, then the rest from the most recent
 	run(w, s)
 	if m.calls() != 0 {
 		t.Fatalf("history made without a request: %d calls", m.calls())

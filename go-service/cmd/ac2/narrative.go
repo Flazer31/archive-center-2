@@ -15,10 +15,9 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// Narrative support (1.0 E03, preprocessing step 4, design
-// 20261107-ac2-preprocessing/DESIGN-04.md). After the memory is chosen (and
+// Narrative support (1.0 E03, preprocessing step 4). After the memory is chosen (and
 // a preprocessing mode has chosen among it), one AI ("the publisher") may:
-//   - write a guide at one of four levels (user 11-08 "4단계로"), each level
+//   - write a guide at one of four levels, each level
 //     adding one kind of item so the levels differ plainly: weak =
 //     connections (reference), mid = + reactions (may be used), strong = +
 //     beats (to follow, placed right before the reply);
@@ -28,14 +27,14 @@ import (
 //     the memory lines). The chat RisuAI keeps is never changed.
 //
 // Every item must name its basis (a memory line or the dialog); one without
-// is dropped from the guide (user 11-08 "빼기") — the guide and the output
+// is dropped from the guide — the guide and the output
 // are never held. Secret-lane memories are not shown to the publisher:
 // their protection is Go's and a guide or a rewritten input could carry them
 // past it. Any failure sends the request as it would go without support.
 
 // narrTimeout bounds one publisher call; narrDeadline is the latest the
 // whole memory answer may run from the request's start (the plugin waits
-// 100 s for it): the handler's context ends there (review 20 B-03).
+// 100 s for it): the handler's context ends there.
 const narrTimeout = 60 * time.Second
 
 var narrDeadline = 95 * time.Second // a var only so a test can shorten it
@@ -98,18 +97,18 @@ type inputRewrite struct {
 	To   string `json:"to"`
 }
 
-const narrGuideHead = `너는 롤플레이의 다음 응답을 돕는 서사 편집자다. 응답 본문 대신 짧은 가이드를 만든다.
+const narrGuideHead = `You are a narrative editor who helps with the next reply in a roleplay. Instead of writing the reply itself, you write a short guide.
 
-[대화]에는 현재 사용자 입력과 최근 대화가 있다. 끝의 [이번 사용자 입력]은 같은 현재 입력을 다시 보여 준 것이다. 최근 대화는 배경이고, 이번 응답은 [이번 사용자 입력]이 정한 장면에서 이어진다. [기억 줄]은 이번 요청에 함께 넣는 저장된 기억이다.
+[Conversation] holds the current user input and the recent conversation. [Current user input] at the end repeats that same input. The recent conversation is background; this reply continues from the scene that [Current user input] sets. [Memory lines] are stored memories sent along with this request.
 
-규칙:
-- 이번 사용자 입력의 시간·장소·진행 방향·속도를 따른다. 사용자가 장면을 옮겼다면 이전 장면을 다시 이어 쓰지 않는다.
-- 사실은 대화와 기억 줄에서만 가져온다. 새 과거·설정·인물·사건 결과를 만들지 않는다. 추측과 계획은 확정된 사실로 바꾸지 않는다.
-- 사용자 캐릭터가 아직 쓰지 않은 말·행동·생각·감정·선택을 정하지 않는다. 사용자가 이미 쓴 행동은 이번 응답의 출발점으로 삼는다.
-- 반응과 전개는 앞으로의 응답을 위한 제안이다. 인물이 아는 범위와 관계를 지키며, 아직 일어나지 않은 반응을 과거 사실처럼 쓰지 않는다.
-- 이번 응답에 도움이 되는 내용만 쓴다. 기억을 길게 다시 설명하거나 같은 내용을 여러 칸에 반복하지 않는다. 필요 없는 칸은 빈 목록으로 둔다.
-- 각 항목의 refs에는 그 내용을 뒷받침하는 기억 줄 번호(예: "L3")나 대화 표식 "D"를 쓴다. "D"는 대화의 실제 내용에 근거한다는 뜻이며, 추측을 사실로 만드는 표식이 아니다. 근거 없는 항목은 쓰지 않는다.
-- 사용자 입력과 같은 언어로, 항목마다 한두 문장으로 간결하게 쓴다.`
+Rules:
+- Follow the time, place, direction and pace of the current user input. If the user has moved the scene, do not resume the previous one.
+- Take facts only from the conversation and the memory lines. Do not invent new backstory, settings, characters or event outcomes. Do not turn guesses or plans into settled facts.
+- Do not decide anything the user's character has not yet written: words, actions, thoughts, feelings or choices. Actions the user has already written are the starting point of this reply.
+- Keep to what each character knows and to their relationships, and do not present anything that has not happened yet as a past fact.
+- Write only what helps this reply. Do not retell memories at length or repeat the same content across fields.
+- Put the memory line numbers that support each item (e.g. "L3") or the conversation mark "D" in that item's "refs" list, never inside its "text". "D" means the item rests on what is actually in the conversation; it is not a mark that turns a guess into fact. Do not write items without a basis.
+- Write in the language of the story, not the language of these instructions: follow a language the user explicitly asks for; otherwise use the language of the user input, or of the recent conversation when the input is empty or too short to tell. One or two short sentences per item.`
 
 // narrFields are each level's items, in the order they are explained.
 var narrFields = map[string][]string{
@@ -119,9 +118,9 @@ var narrFields = map[string][]string{
 }
 
 var narrFieldText = map[string]string{
-	"connections": `connections: 이번 장면에서 여전히 유효한 약속·상태·관계와, 그것이 현재 상황에 이어지는 점. 기억 줄 또는 대화에서 찾는다. 단순한 지난 이야기 요약은 쓰지 않는다. 형식 {"text":"…","refs":["L2"]}`,
-	"reactions":   `reactions: 이번 입력에 반응할 NPC의 반응 후보. 누구의 어떤 말·행동에 대한 반응인지 드러내고, 가능한 반응으로 쓴다. 사용자 캐릭터의 반응은 쓰지 않는다. 모든 인물을 채울 필요는 없다. 형식 {"who":"인물 이름","text":"…","refs":["D"]}`,
-	"beats":       `beats: 이번 응답을 어떤 순서로 이어 갈지 적는 전개 지침. 현재 입력에 대한 반응에서 시작하고, 필요한 만큼 전개한 뒤 이번 응답을 맺는다. part는 "시작", "전개", "마무리" 중 해당하는 것을 쓰며 모든 부분을 채울 필요는 없다. 마무리는 사건 해결이나 다음 날로의 이동을 뜻하지 않는다. 사용자에게 남은 선택을 대신 결정하지 않는다. 형식 {"part":"시작","text":"…","refs":["D"]}`,
+	"connections": `connections: promises, states and relationships still in force in this scene, and how they bear on the current situation. Find them in the memory lines or the conversation. Do not write a plain summary of the past story. Format {"text":"…","refs":["L2"]}`,
+	"reactions":   `reactions: possible reactions of NPCs to this input. Make clear whose words or actions each one answers, and write it as a possible reaction for the reply to come, not as something that has happened. Do not write reactions of the user's character. Not every character needs one. Format {"who":"character name","text":"…","refs":["D"]}`,
+	"beats":       `beats: directions for the order in which this reply unfolds. They are plans for the reply still to be written, not past events. Start from the reaction to the current input, develop as far as needed, then end this reply. part is whichever of "opening", "development" and "closing" applies; not every part is needed. "closing" does not mean resolving the event or moving on to the next day. Do not decide choices that are left to the user. Format {"part":"opening","text":"…","refs":["D"]}`,
 }
 
 func narrGuidePrompt(head, level, state, lines, input string) string {
@@ -139,43 +138,44 @@ func narrGuidePrompt(head, level, state, lines, input string) string {
 	b.WriteString("\n")
 	out, _ := json.Marshal(shape)
 	if lines == "" {
-		lines = "(없음)"
+		lines = "(none)"
 	}
-	b.WriteString("출력은 JSON 객체 하나만 쓴다. 코드 블록과 해설은 붙이지 않는다. 아래 키만 쓰고 각 값은 목록으로 쓴다. 쓸 내용이 없으면 []로 둔다.\n" + string(out) + "\n\n[대화]\n" + state + "\n\n[기억 줄]\n" + lines + "\n\n[이번 사용자 입력]\n" + input + "\n\n이 입력에서 이어질 이번 응답의 가이드를 지정된 JSON으로 작성한다.")
+	b.WriteString("Output exactly one JSON object, with no code block and no commentary. Use only the keys below, each exactly once, each value a list; give a key [] when it has nothing useful, and add no other keys.\n" + string(out) + "\n\n[Conversation]\n" + state + "\n\n[Memory lines]\n" + lines + "\n\n[Current user input]\n" + input + "\n\nWrite the guide for the reply that follows this input, in the JSON above.")
 	return b.String()
 }
 
-const narrClarifyHead = `너는 롤플레이 사용자 입력의 문장을 다듬는 편집자다. [대화]는 뜻을 이해하기 위한 문맥이며 현재 입력도 포함한다. 마지막 [사용자 입력]에 있는 글만 다듬는다. 이야기의 다음 부분이나 상대의 답을 쓰지 않는다.
+const narrClarifyHead = `You are an editor who polishes the wording of a roleplay user's input. [Conversation] is context for understanding the meaning and includes the current input. Polish only the text in the final [User input]. Do not write the next part of the story or anyone's answer.
 
-뜻과 말투를 지키면서 문장을 자연스럽고 분명하게 정리한다.
-- 문장 나누기, 조사·띄어쓰기·어순, 불필요하게 겹친 표현을 정리할 수 있다.
-- 생략된 주어·대상은 현재 입력과 최근 대화에서 누구 또는 무엇을 가리키는지 분명할 때만 보충한다. 여러 뜻으로 읽히는 부분은 임의로 결정하지 말고 그대로 둔다.
-- 새 사실·행동·대사·감정·이유·묘사를 더하지 않는다. 대화나 기억의 내용을 설명으로 덧붙이지 않는다.
-- 원문의 말투·시점·인칭·언어와 대사·서술·지시의 구분을 지킨다. 따옴표 안 대사와 괄호 안 지시는 그대로 둔다.
-- 이름·수치·부정·조건·의문·망설임·강조·행동 순서를 보존한다. 시도나 계획을 완료된 일로 바꾸지 않는다. 짧게 만들기 위해 뜻을 빼지 않는다.
-- 이미 분명하고 자연스러우면 바꾸지 않는다. 고칠 부분만 고치고 나머지는 유지한다.
+Keep the meaning and the voice while making the sentences natural and clear.
+- Copy dialogue inside quotation marks and directions inside parentheses exactly, character for character and punctuation included. This comes before every other change below.
+- Outside them, you may split sentences and fix particles, spacing, word order and needlessly repeated wording.
+- Fill in an omitted subject or object only when the current input and the recent conversation make clear who or what it refers to. Leave anything that can be read more than one way as it is; do not decide it.
+- Do not add new facts, actions, lines, feelings, reasons or descriptions. Do not add explanations taken from the conversation or memories.
+- Keep the original's voice, point of view, person and language, and the distinction between dialogue, narration and directions.
+- Keep names, numbers, negations, conditions, questions, hesitation, emphasis and the order of actions. Do not turn an attempt or a plan into something done. Do not drop meaning to make it shorter.
+- If it is already clear and natural, do not change it. Change only what needs fixing and keep the rest.
 
-바꾸었다면 출력은 JSON 하나: {"input":"다듬은 사용자 입력 전문"}
-바꿀 것이 없으면: {"unchanged":true}
-둘 중 하나만 출력하고 코드 블록이나 해설은 붙이지 않는다.`
+If you changed it, output one JSON: {"input":"the full polished user input"}
+If nothing needs changing: {"unchanged":true}
+Output only one of the two, with no code block or commentary.`
 
-// narrBlendHead brings memory blending back (user 2026-11-10: "되살리는데
-// 이전에는 기억 입력에 있던 내용을 그대로 붙여 넣어서 그래"). The earlier
-// head only said to use facts from the memory lines, and the model copied
-// the lines; this one says how a memory may enter the input.
-const narrBlendHead = `너는 롤플레이 사용자 입력에 지난 일을 녹이는 편집자다. [대화]는 최근 대화이며 현재 입력도 포함한다. [기억 줄]은 이번 요청에 함께 들어가는 저장된 기억이다. 마지막 [사용자 입력]에 있는 글만 고친다. 이야기의 다음 부분이나 상대의 답을 쓰지 않는다.
+// narrBlendHead brings memory blending back ("되살리는데 이전에는 기억 입력에 있던 내용을
+// 그대로 붙여 넣어서 그래"). The earlier head only said to use facts from the
+// memory lines, and the model copied the lines; this one says how a
+// memory may enter the input.
+const narrBlendHead = `You are an editor who works past events into a roleplay user's input. [Conversation] is the recent conversation and includes the current input. [Memory lines] are stored memories sent along with this request. Change only the text in the final [User input]. Do not write the next part of the story or anyone's answer.
 
-사용자 입력이 가리키거나 기대고 있는 지난 일이 [기억 줄]에 있을 때만, 그 일을 사용자의 문장 안에 짧은 구절로 녹인다.
-- 기억 줄의 문장을 옮겨 적지 않는다. 한 사실은 사용자의 말투와 시점에 맞춘 짧은 구절 하나로 바꿔서, 그 사실과 닿는 문장 안에 넣는다.
-- 많아도 세 가지까지만 녹인다. 입력 끝에 설명 문장을 덧붙이거나 목록·머리말·괄호 설명을 만들지 않는다.
-- 입력이나 [대화]에 이미 나온 내용은 다시 넣지 않는다. 지금 입력과 닿지 않는 기억은 넣지 않는다. 녹일 것을 찾으려고 애쓰지 않는다.
-- [기억 줄]에 있는 사실만 쓴다. 새 사실·행동·대사·감정·이유·묘사를 더하지 않는다.
-- 사용자가 맡은 인물이 보고 듣고 아는 것만 녹인다. 다른 인물의 속마음·생각·숨은 사정은 넣지 않는다.
-- 녹인 구절 밖의 글은 고치지 않는다. 사용자가 쓴 뜻·행동·행동 순서·말투·시점·인칭·언어를 지키고, 따옴표 안 대사와 괄호 안 지시는 그대로 둔다.
+Only when [Memory lines] hold a past event that the user input points to or relies on, work that event into the user's own sentences as a short phrase.
+- Do not copy sentences from the memory lines. Turn each fact into one short phrase in the user's voice and point of view, and put it inside the sentence that touches that fact.
+- Work in three facts at most. Do not append explanatory sentences to the end of the input, and do not make lists, headings or parenthetical explanations.
+- Do not add again what the input or [Conversation] already says. Leave out memories that do not touch the current input. Do not go looking for something to add.
+- Use only facts in [Memory lines]. Do not add new facts, actions, lines, feelings, reasons or descriptions.
+- Work in only what the user's character has seen, heard or knows. Do not add other characters' inner thoughts, feelings or hidden circumstances.
+- Do not change the text outside the phrases you work in, not even a single word or punctuation mark. Keep the user's meaning, actions, order of actions, voice, point of view, person and language. Copy dialogue inside quotation marks and directions inside parentheses exactly, character for character and punctuation included.
 
-고쳤다면 출력은 JSON 하나: {"input":"고친 사용자 입력 전문","refs":["L2"]}
-녹일 것이 없으면: {"unchanged":true}
-둘 중 하나만 출력하고 코드 블록이나 해설은 붙이지 않는다.`
+If you changed it, output one JSON: {"input":"the full changed user input","refs":["L2"]}
+If there is nothing to work in: {"unchanged":true}
+Output only one of the two, with no code block or commentary.`
 
 // firstJSON decodes the answer's first JSON object into v (a model may add
 // prose around it).
@@ -188,6 +188,52 @@ func firstJSON(s string, v any) error {
 		return errors.New("ai_answer_not_json")
 	}
 	return nil
+}
+
+// guideItems reads the guide answer's first JSON object key by key (11-10
+// measurement: a model added an object key or wrote a key twice, and reading
+// the whole object into one map lost every item). A key whose value is not a
+// list of items is not a guide field and is passed over; a key written twice
+// keeps both lists; an item of the wrong shape is passed over alone; a cut
+// after whole keys keeps them. renderGuide still takes only the level's
+// fields and drops items without a basis.
+func guideItems(s string) (map[string][]narrItem, error) {
+	at := strings.Index(s, "{")
+	if at < 0 {
+		return nil, errors.New("ai_answer_without_json")
+	}
+	dec := json.NewDecoder(strings.NewReader(s[at:]))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return nil, errors.New("ai_answer_not_json")
+	}
+	out := map[string][]narrItem{}
+	read := 0
+	for dec.More() {
+		t, err := dec.Token()
+		key, ok := t.(string)
+		var raw json.RawMessage
+		if err != nil || !ok || dec.Decode(&raw) != nil {
+			// a cut-off answer keeps the keys read whole before the cut,
+			// as a cut-off critic answer keeps its finished memories
+			// (11-10 audit); nothing read whole is still not JSON
+			if read == 0 {
+				return nil, errors.New("ai_answer_not_json")
+			}
+			break
+		}
+		read++
+		var list []json.RawMessage
+		if json.Unmarshal(raw, &list) != nil {
+			continue
+		}
+		for _, one := range list {
+			var it narrItem
+			if json.Unmarshal(one, &it) == nil { // a malformed item drops itself, not its list
+				out[key] = append(out[key], it)
+			}
+		}
+	}
+	return out, nil
 }
 
 type narrItem struct {
@@ -218,11 +264,11 @@ func renderGuide(level string, items map[string][]narrItem, shown map[string]boo
 		head  string
 		lines []string
 	}
-	refHead := "[서사 참고 — 지난 일과 인물 상태에 대한 메모다. 연결은 배경으로 참고하고 NPC 반응 후보는 상황에 맞게 골라 쓴다. 모두 본문에 넣을 필요는 없다. 현재 입력의 방향과 속도를 우선한다]"
+	refHead := "[Narrative notes — background on past events and characters; use what fits, none of it must appear. The current input's direction and pace come first]"
 	if level == store.GuideWeak {
-		refHead = "[서사 참고 — 지난 일과 인물 상태에 대한 배경 메모다. 본문에 직접 설명할 필요는 없으며, 현재 입력의 방향과 속도를 우선한다]"
+		refHead = "[Narrative notes — background on past events and characters; no need to explain them. The current input's direction and pace come first]"
 	}
-	after := []*sec{{head: "현재 장면의 연결:"}, {head: "NPC 반응 후보:"}}
+	after := []*sec{{head: "Scene connections:"}, {head: "NPC reaction options:"}}
 	before := &sec{}
 	render := func() narrGuide {
 		var g narrGuide
@@ -236,12 +282,11 @@ func renderGuide(level string, items map[string][]narrItem, shown map[string]boo
 			g.AfterMemory = refHead + "\n" + strings.TrimSuffix(b.String(), "\n")
 		}
 		if len(before.lines) > 0 {
-			g.BeforeReply = "[이번 응답 전개 계획 — 현재 입력의 방향과 속도 안에서 아래 순서에 따라 응답한다. 사용자 캐릭터의 미선택 행동은 대신 정하지 않는다. 아래는 앞으로 쓸 응답의 지침이며, 이미 일어난 사건이 아니다. 계획 문구를 본문에서 해설하지 않는다]\n" + strings.Join(before.lines, "\n")
+			g.BeforeReply = "[Plan for this reply — follow this order within the current input's direction and pace. Do not decide the user character's unchosen actions. These are plans, not past events; do not narrate them]\n" + strings.Join(before.lines, "\n")
 		}
 		return g
 	}
-	// counted as sent: each part with its title and fingerprint (review 20
-	// C-01)
+	// counted as sent: each part with its title and fingerprint
 	size := func(g narrGuide) int {
 		return utf8.RuneCountInString(store.GuideMessage(g.AfterMemory)) + utf8.RuneCountInString(store.GuideMessage(g.BeforeReply))
 	}
@@ -369,13 +414,15 @@ func narrative(ctx context.Context, n *narrDeps, d store.Delivery, scope []memor
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			t := time.Now()
 			r, err := n.ai.Chat(ctx, narrGuidePrompt(n.head, n.s.Level, state, lines, input))
 			mu.Lock()
+			rec.GuideMS = time.Since(t).Milliseconds()
 			defer mu.Unlock()
 			rec.AICalls++
 			if err == nil {
-				items := map[string][]narrItem{}
-				if err = firstJSON(r.Content, &items); err == nil {
+				var items map[string][]narrItem
+				if items, err = guideItems(r.Content); err == nil {
 					g = renderGuide(n.s.Level, items, shown, n.s.Chars, rec)
 					if g.AfterMemory == "" && g.BeforeReply == "" {
 						rec.Guide = "nothing_kept"
@@ -393,12 +440,14 @@ func narrative(ctx context.Context, n *narrDeps, d store.Delivery, scope []memor
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			prompt := narrClarifyHead + "\n\n[대화]\n" + state + "\n\n[사용자 입력]\n" + input
+			prompt := narrClarifyHead + "\n\n[Conversation]\n" + state + "\n\n[User input]\n" + input
 			if n.s.Input == store.InputBlend {
-				prompt = narrBlendHead + "\n\n[대화]\n" + state + "\n\n[기억 줄]\n" + lines + "\n[사용자 입력]\n" + input
+				prompt = narrBlendHead + "\n\n[Conversation]\n" + state + "\n\n[Memory lines]\n" + lines + "\n[User input]\n" + input
 			}
+			t := time.Now()
 			r, err := n.ai.Chat(ctx, prompt)
 			mu.Lock()
+			rec.InputMS = time.Since(t).Milliseconds()
 			defer mu.Unlock()
 			rec.AICalls++
 			if err == nil {

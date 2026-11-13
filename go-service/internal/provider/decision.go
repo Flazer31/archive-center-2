@@ -11,11 +11,11 @@ import (
 	"time"
 )
 
-// Decision models (1.0 E02, user 11-07 "jev는 ollama의 clef로 대체"): models
-// that answer typed questions with probabilities instead of writing text,
-// over the System One API (POST <base>/v1/systemone {model, state,
-// questions}). Ollama's Clef (local Ollama signed in to ollama.com with
-// clef:cloud, or ollama.com itself with a key) and TypeSafe's Jev.
+// Decision models (1.0 E02): models that answer typed questions with
+// probabilities instead of writing text, over the System One API (POST
+// <base>/v1/systemone {model, state, questions}). Ollama's Clef (local
+// Ollama signed in to ollama.com with clef:cloud, or ollama.com itself
+// with a key) and TypeSafe's Jev.
 
 // DecisionProvider is a decision-model service the settings screen offers.
 type DecisionProvider struct {
@@ -27,8 +27,8 @@ type DecisionProvider struct {
 	KeyOptional bool `json:"key_optional"`
 }
 
-// DecisionProviders are the services offered, in order (user 11-07: Jev and
-// Ollama only for now; Ollama in the cloud, the model being large).
+// DecisionProviders are the services offered, in order (Jev and Ollama only
+// for now; Ollama in the cloud, the model being large).
 var DecisionProviders = []DecisionProvider{
 	{ID: "ollama", Label: "Ollama (이 PC의 Ollama, ollama.com 로그인)", DefaultURL: "http://127.0.0.1:11434", DefaultModel: "clef:cloud", KeyOptional: true},
 	{ID: "ollama_cloud", Label: "Ollama Cloud (ollama.com 직접, API 키)", DefaultURL: "https://ollama.com", DefaultModel: "clef"},
@@ -89,7 +89,7 @@ func NewDecider(c DecisionConfig) (*Decider, error) {
 		endpoint = strings.TrimSuffix(base, "/v1") + "/v1/systemone"
 	}
 	// a redirect is not followed: the key and the story text go only to
-	// the address set (review 16 A-02); a 3xx is reported as a failure
+	// the address set; a 3xx is reported as a failure
 	client := &http.Client{Timeout: 2 * time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return &Decider{cfg: c, endpoint: endpoint, HTTP: client, Batch: 64}, nil
 }

@@ -18,8 +18,8 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// Regressions of cross-review 10 (Sol, 2026-11-06) on C22. The model is a
-// local recording boundary: no HTTP, model or embedding call.
+// Regressions on C22. The model is a local recording
+// boundary: no HTTP, model or embedding call.
 type pastRecorder struct {
 	mu      sync.Mutex
 	prompts []string

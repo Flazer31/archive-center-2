@@ -64,7 +64,7 @@ var tokenFileRecord = regexp.MustCompile(`^(?:\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2
 func (s *startupStream) record(line string) {
 	b := s.owner
 	// only the backend's own token records (a record of their own, not text
-	// quoted inside an error) hide what follows (review 22 B-3)
+	// quoted inside an error) hide what follows
 	if tokenRecord.MatchString(line) {
 		s.privateToken = true
 		fmt.Fprintln(b.file, "접속 토큰은 화면에만 표시하며 시작 로그에는 기록하지 않습니다.")

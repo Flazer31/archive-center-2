@@ -29,6 +29,7 @@ type prepFakes struct {
 	decAsked           []string   // question texts
 	decRequests        [][]string // question texts, per request
 	decState, aiPrompt string
+	decStates          []string // every request's state, in order
 	dec, ai            *httptest.Server
 }
 
@@ -46,6 +47,7 @@ func newPrepFakes(t *testing.T) *prepFakes {
 		defer f.mu.Unlock()
 		f.decCalls++
 		f.decState = body.State
+		f.decStates = append(f.decStates, body.State)
 		if r.URL.Path != "/v1/systemone" || f.decFail {
 			http.Error(w, "down", 500)
 			return

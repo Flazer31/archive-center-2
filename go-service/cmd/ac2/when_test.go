@@ -9,9 +9,9 @@ import (
 	"archivecenter2/goservice/internal/pipeline"
 )
 
-// C12 (user 11-06: every memory has a date): the memory list gives each
-// memory the recorded date injection reads (Day counted from the chat's
-// first turn) and when it happened, through the same reads.
+// C12 (every memory has a date): the memory list gives each memory the
+// recorded date injection reads (Day counted from the chat's first
+// turn) and when it happened, through the same reads.
 func TestMemoryListGivesEveryMemoryADate(t *testing.T) {
 	db := modelsDB(t)
 	p := pipeline.New(db)

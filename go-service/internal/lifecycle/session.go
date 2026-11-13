@@ -20,6 +20,8 @@ type Session struct {
 	member     map[string]*Member
 	revSeq     int
 	renames    []Rename
+	pruned     Pruned          // texts forgotten since the last save
+	atFront    map[string]bool // rows at the chat's front in the snapshot being applied
 	noted      map[string]bool // observations already reported as events
 	// Progress is the last applied plugin seq per plugin boot (boot_id ->
 	// seq), kept with the session so an older observation of this chat that
@@ -282,7 +284,7 @@ func (s *Session) upgradeKeys(rows []obsRow) {
 			continue
 		}
 		// a row cut away keeps its key; a new row with its text is new
-		// (review 21 B-3; the mark is stored, review 22 A-5)
+		// (the mark is stored)
 		if m, ok := s.member[r.fallback]; ok && m.Cut {
 			continue
 		}
@@ -313,6 +315,87 @@ func (s *Session) upgradeKeys(rows []obsRow) {
 			}
 		}
 	}
+}
+
+// Pruned is what the session forgot since the last save: replies a reroll
+// replaced, emptied (Cleared[key] is the text number kept, its text blank,
+// earlier ones deleted), and replies whose earlier texts gave way to a newer
+// one (texts before Trimmed[key] are deleted).
+type Pruned struct {
+	Cleared map[string]int
+	Trimmed map[string]int
+	// Texts are the bodies dropped, by row key: a reroll or an edit leaves
+	// no copy of them (raw observations, job sources and the text cache are
+	// cleared too)
+	Texts map[string][]string
+}
+
+// dropped records a body the session no longer keeps.
+func (p *Pruned) dropped(key, text string) {
+	if text == "" {
+		return
+	}
+	if p.Texts == nil {
+		p.Texts = map[string][]string{}
+	}
+	for _, t := range p.Texts[key] {
+		if t == text {
+			return
+		}
+	}
+	p.Texts[key] = append(p.Texts[key], text)
+}
+
+// PrunedTexts is a copy of the bodies dropped since the last save, read
+// before the save takes them.
+func (s *Session) PrunedTexts() map[string][]string {
+	out := map[string][]string{}
+	for k, v := range s.pruned.Texts {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
+}
+
+// Held is every text the session holds now (inputs and kept replies); a
+// dropped body equal to one of them is not removed anywhere.
+func (s *Session) Held() map[string]bool {
+	held := map[string]bool{}
+	for _, t := range s.Turns {
+		for _, m := range t.Members {
+			held[m.Data] = true
+		}
+		for _, r := range t.Responses {
+			for _, rev := range r.Revisions {
+				held[rev.Data] = true
+			}
+		}
+	}
+	return held
+}
+
+// ShowsDropped says a stored text is a dropped body or a display of it (a
+// translation block around it): the same text, or one containing it that
+// contains no text the session holds.
+func ShowsDropped(stored, text string, held map[string]bool) bool {
+	if stored == text {
+		return true
+	}
+	if text == "" || held[stored] || !strings.Contains(stored, text) {
+		return false
+	}
+	for h := range held {
+		if h != "" && strings.Contains(stored, h) {
+			return false
+		}
+	}
+	return true
+}
+
+// TakePruned returns what was forgotten since the last call (for storage).
+func (s *Session) TakePruned() Pruned {
+	p := s.pruned
+	s.pruned = Pruned{}
+	return p
 }
 
 // TakeRenames returns key changes since the last call (for storage).
@@ -378,8 +461,8 @@ func (s *Session) Apply(snap Snapshot) {
 	// a row added now is not a row "still there"
 	front := frontTrim(s.Turns, seen)
 	// a row cut away before stays cut while it is gone: it is no longer on
-	// the host's screen, so no later delete there can be about it (review
-	// 21: an edit after a cut found no remaining row and lost the cut turn)
+	// the host's screen, so no later delete there can be about it (an edit
+	// after a cut found no remaining row and lost the cut turn)
 	for _, t := range s.Turns {
 		for _, k := range cutKeys(t) {
 			if !seen[k] {
@@ -410,9 +493,9 @@ func (s *Session) Apply(snap Snapshot) {
 			t = s.knownTurn(g)
 			// The next existing turn whose rows all disappeared continues
 			// when either side lacks chatId: an edit changes the fallback key
-			// (and RisuAI may assign the chatId in the same request).
-			// a turn cut away from the front is not one an edit continues
-			// (review 21 B-2): the next turn after it is
+			// (and RisuAI may assign the chatId in the same request). a turn
+			// cut away from the front is not one an edit continues: the next
+			// turn after it is
 			next := lastPos + 1
 			for next < len(order) && (wasCut(order[next]) || cutTurn(order[next], front)) {
 				next++
@@ -461,16 +544,15 @@ func (s *Session) Apply(snap Snapshot) {
 					known = true
 					continue
 				}
-				// A row without chatId before the known rows of a later turn
-				// is an edit of the turn right before it when that turn's rows
-				// are all gone (its reply deleted, its input edited): it joins
-				// that turn as a whole group without known rows does, not the
-				// later one (review 21/22 A-4)
-				// The host adds new rows at the end only, so a new row before a
-				// later turn's known rows is an edit even when it got a chatId
-				// on the way (review 23 A-2). It continues the turn right before
-				// the group's own turn t: later new rows of the group go there
-				// too, never further back (review 23 A-1).
+				// A row without chatId before the known rows of a later turn is
+				// an edit of the turn right before it when that turn's rows are
+				// all gone (its reply deleted, its input edited): it joins that
+				// turn as a whole group without known rows does, not the later
+				// one The host adds new rows at the end only, so a new row
+				// before a later turn's known rows is an edit even when it got a
+				// chatId on the way. It continues the turn right before the
+				// group's own turn t: later new rows of the group go there too,
+				// never further back.
 				if !known {
 					if p, ok := pos[t]; ok && p > 0 {
 						if prev := order[p-1]; !wasCut(prev) && vacated(prev, seen) {
@@ -529,6 +611,14 @@ func (s *Session) Apply(snap Snapshot) {
 			}
 		}
 	}
+	// rows at the front of the chat in this snapshot are never emptied by
+	// the newest-value rule, also when the turn's new row below counts them
+	// as replaced (an older misreading of a cut with a new part, also
+	// before 1.1)
+	s.atFront = make(map[string]bool, len(front))
+	for k := range front {
+		s.atFront[k] = true
+	}
 	// a turn that got a new row in this snapshot was edited or rerolled
 	// there, not cut away: its gone rows go as before
 	for t := range grew {
@@ -540,6 +630,7 @@ func (s *Session) Apply(snap Snapshot) {
 		}
 	}
 	s.reconcileMissing(seen, added, front)
+	s.atFront = nil
 	markCut(s.Turns, front)
 	s.noteBeforeMarker(rows)
 	s.noteOff(rows, offOf)
@@ -569,6 +660,35 @@ func (s *Session) restore(t *Turn) {
 	if t.Inactive {
 		t.Inactive = false
 		s.emit("turn_restored", t.ID, "")
+	}
+}
+
+// clearReplaced empties the texts of the replies a reroll replaced just now
+// (only the newest reply value is kept). The row stays as an empty marker:
+// it keeps its turn (a swipe back to it returns to the same turn, a branch
+// made at it keeps its place) and its last text number (a restart does not
+// hand the same number out again). Rows replaced before (history from
+// before 1.1, or a cut part an older misreading counts as replaced) are
+// left as they are.
+func (s *Session) clearReplaced(t *Turn, now []*ResponseRow) {
+	for _, r := range now {
+		n := len(r.Revisions)
+		// a row cut from the front is kept content, even when a later
+		// snapshot counts it as replaced (an older misreading of cuts, also
+		// before 1.1): its text is never emptied
+		if n == 0 || (n == 1 && r.Revisions[0].Data == "") || r.State != Replaced || r.Cut || s.atFront[r.Key] {
+			continue
+		}
+		last := r.Revisions[n-1]
+		for _, rev := range r.Revisions {
+			s.pruned.dropped(r.Key, rev.Data)
+		}
+		r.Revisions = []Revision{{Seq: last.Seq, GenerationID: last.GenerationID, Source: last.Source}}
+		if s.pruned.Cleared == nil {
+			s.pruned.Cleared = map[string]int{}
+		}
+		s.pruned.Cleared[r.Key] = last.Seq
+		delete(s.pruned.Trimmed, r.Key)
 	}
 }
 
@@ -616,7 +736,18 @@ func (s *Session) applyResponse(t *Turn, r obsRow, src Source) (*Turn, bool) {
 				// after the output event) keeps the observed completion
 				rev.Confirmed = owner.Confirmed
 			}
-			row.Revisions = append(row.Revisions, rev)
+			// only the newest text is kept: an edit or a new
+			// generation in the same row overwrites the earlier text
+			for _, old := range row.Revisions {
+				if old.Data != r.Data {
+					s.pruned.dropped(r.key, old.Data)
+				}
+			}
+			row.Revisions = []Revision{rev}
+			if s.pruned.Trimmed == nil {
+				s.pruned.Trimmed = map[string]int{}
+			}
+			s.pruned.Trimmed[r.key] = rev.Seq
 			s.emit("response_revised", owner.ID, r.key)
 		}
 		return owner, false
@@ -625,15 +756,18 @@ func (s *Session) applyResponse(t *Turn, r obsRow, src Source) (*Turn, bool) {
 	// seen deleted first; a new reply to a turn left without one replaces
 	// the rows deleted last, not parts deleted earlier on their own.
 	noneActive := activeResponses(t) == 0
+	var replaced []*ResponseRow
 	for _, old := range t.Responses {
 		if old.AwaitingReplacement {
 			if noneActive && old.State == Deleted {
 				old.State = Replaced
 				s.emit("response_replaced", t.ID, old.Key)
+				replaced = append(replaced, old)
 			}
 			old.AwaitingReplacement = false
 		}
 	}
+	s.clearReplaced(t, replaced)
 	row := &ResponseRow{Key: r.key, State: Active, Gen: r.GenerationID}
 	if !r.Unreadable {
 		s.revSeq++
@@ -715,7 +849,7 @@ func nthActive(t *Turn, n int) *ResponseRow {
 // regenerate); otherwise it was deleted. User rows that vanished keep their turn.
 func (s *Session) reconcileMissing(seen map[string]bool, added map[*Turn]bool, front map[string]bool) {
 	for _, t := range s.Turns {
-		var deleted []*ResponseRow
+		var deleted, replacedRows []*ResponseRow
 		for _, r := range t.Responses {
 			if seen[r.Key] || front[r.Key] || r.State != Active {
 				continue
@@ -723,12 +857,14 @@ func (s *Session) reconcileMissing(seen map[string]bool, added map[*Turn]bool, f
 			if added[t] {
 				r.State = Replaced
 				s.emit("response_replaced", t.ID, r.Key)
+				replacedRows = append(replacedRows, r)
 			} else {
 				r.State = Deleted
 				deleted = append(deleted, r)
 				s.emit("response_deleted", t.ID, r.Key)
 			}
 		}
+		s.clearReplaced(t, replacedRows)
 		// the turn's last active replies were removed: a reroll may follow
 		if len(deleted) > 0 && activeResponses(t) == 0 {
 			for _, r := range deleted {
@@ -755,12 +891,11 @@ func (s *Session) reconcileMissing(seen map[string]bool, added map[*Turn]bool, f
 
 // frontTrim is the chat's earliest active rows that are gone while a later
 // row is still there: RisuAI's /cut and /del cut the front of a chat away to
-// save browser memory, and their text and memory must stay (user 11-08: "해당
-// 명령어가 사용되어서 삭제가 되었을 경우에는 원문이나 DB에 저장된 기억을
-// 날려선 안돼"). The host runs these commands before any plugin hook, so the
-// shape tells them: a screen delete removes one message or a message and all
-// after it, never the front. A screen delete of the first message alone
-// looks the same and is kept too (user 11-08 "앞쪽 연속 삭제는 보존"). Rows
+// save browser memory, and their text and memory must stay ("해당 명령어가 사용되어서
+// 삭제가 되었을 경우에는 원문이나 DB에 저장된 기억을 날려선 안돼"). The host runs these commands
+// before any plugin hook, so the shape tells them: a screen delete removes
+// one message or a message and all after it, never the front. A screen
+// delete of the first message alone looks the same and is kept too. Rows
 // gone after the first row still there are deleted as before; with no row
 // left there is no front to keep.
 func frontTrim(turns []*Turn, seen map[string]bool) map[string]bool {
@@ -821,7 +956,7 @@ func markCut(turns []*Turn, front map[string]bool) {
 // wasCut is a turn whose active rows were marked cut at an earlier snapshot:
 // no later edit can be about it (it is off the screen). A turn whose rows
 // all went in this snapshot without chatId may be an edit and may be
-// continued (review 21/22 A-4).
+// continued.
 func wasCut(t *Turn) bool {
 	found := false
 	for _, m := range t.Members {
@@ -868,7 +1003,7 @@ func cutTurn(t *Turn, front map[string]bool) bool {
 func (s *Session) confirm(t *Turn, why string) {
 	t.Confirmed = true
 	for _, r := range t.Responses {
-		if r.State == Active && len(r.Revisions) > 0 {
+		if r.State == Active && len(r.Revisions) > 0 && r.Revisions[len(r.Revisions)-1].Data != "" {
 			r.Revisions[len(r.Revisions)-1].Confirmed = true
 		}
 	}

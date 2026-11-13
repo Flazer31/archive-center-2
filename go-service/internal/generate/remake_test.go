@@ -36,7 +36,7 @@ func TestU3RemakeDoesNotReuseRetiredHeldAnswer(t *testing.T) {
 	s := lifecycle.NewSession("chat:A")
 	s.Apply(snap(lifecycle.SourceLoad, row("u1", "user", "", "ask"), row("a1", "char", "g1", "reply")))
 	src := memory.Own(s)[0].Source
-	if err := db.Grant(s.Key, []int{src.Turn}); err != nil {
+	if err := db.Grant(s.Key, []memory.Source{src}); err != nil {
 		t.Fatal(err)
 	}
 	j, err := db.JobFor(src)

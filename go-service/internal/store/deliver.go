@@ -1,11 +1,16 @@
 package store
 
 import (
+	"database/sql"
+	"encoding/binary"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"archivecenter2/goservice/internal/body"
 	"archivecenter2/goservice/internal/ingest"
@@ -29,6 +34,36 @@ type TextPrint struct {
 	H    string `json:"h"`
 	Role string `json:"role,omitempty"` // the message's role in the request, when sent
 	Text string `json:"text,omitempty"` // retained host wire field; baseline selection uses fingerprints
+}
+
+// RequestPrefix compares a main-model request with the chat's previous one
+// from the start (1.1 A2): a provider's prompt cache reuses only an equal
+// beginning, so a beginning that changes every turn is a cache missed
+// every turn. Compared are the host's messages as sent to Archive Center,
+// before its own memory lines go in.
+type RequestPrefix struct {
+	Same      int `json:"same"`       // messages equal from the start
+	Total     int `json:"total"`      // messages in this request
+	PrevTotal int `json:"prev_total"` // messages in the previous request
+	SameChars int `json:"same_chars"` // chars of the equal beginning
+	Chars     int `json:"chars"`      // chars of this request
+}
+
+// ComparePrefix counts the messages equal from the start (length, hash and
+// role), and their chars.
+func ComparePrefix(prev, cur []TextPrint) RequestPrefix {
+	out := RequestPrefix{Total: len(cur), PrevTotal: len(prev)}
+	same := true
+	for i, m := range cur {
+		out.Chars += m.Len
+		if same && i < len(prev) && prev[i].Len == m.Len && prev[i].H == m.H && prev[i].Role == m.Role {
+			out.Same++
+			out.SameChars += m.Len
+		} else {
+			same = false
+		}
+	}
+	return out
 }
 
 // DeliveryRequest is what one request asks of the chat's memory.
@@ -57,7 +92,7 @@ type Delivery struct {
 	Chars            int      `json:"chars"`                // used of the memory ceiling
 	SecretChars      int      `json:"secret_chars"`         // used of the secret ceiling
 	BlockChars       int      `json:"block_chars"`          // length of the delivered text
-	BodyChars        int      `json:"body_chars,omitempty"` // of the body section (its own budget)
+	BodyChars        int      `json:"body_chars,omitempty"` // of the body sections (facts and tendencies, each its own ceiling)
 	Window           int      `json:"window"`               // the latest turns the request holds
 	WindowFrom       string   `json:"window_from"`          // "payload" (their rows found in it), "count" (its chat messages counted) or "default"
 	Ranked           string   `json:"ranked"`               // "similarity+recency" or "recency"
@@ -75,7 +110,7 @@ type Delivery struct {
 	Trace []TraceRow `json:"-"`
 	// Lines are the delivered records' rendered lines, one per IDs entry
 	// (a record's own line breaks kept): what a preprocessing mode shows a
-	// model for each record (review 18 B-02).
+	// model for each record.
 	Lines []string `json:"-"`
 	// Preprocess is what a preprocessing mode did for this delivery (set by
 	// the request handler; the HUD shows it)
@@ -315,6 +350,7 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	order := append([]candidate(nil), cands...)
 	order = append(order, completion...)
 	sort.SliceStable(order, func(a, b int) bool { return rank[order[a].id] < rank[order[b].id] })
+	order = enteringFirst(order, k, scope[cut:n], req.Input, parent)
 	order = append(pinned, order...)
 
 	aware := map[string][]memory.KnownAwareness{}
@@ -335,15 +371,19 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	// its effects too; an effect's text shows its event's body
 	carried := map[string][]string{}
 	for _, m := range k.Memories {
-		if holds[m.ID] == HoldMute {
-			continue // its text is not shown as another line's basis either
+		// a muted record's text is not shown as another line's basis either;
+		// its protection still goes with the texts recorded at it
+		muted := holds[m.ID] == HoldMute
+		if !muted {
+			bodies[m.ID] = m.Body
 		}
-		bodies[m.ID] = m.Body
 		carried[m.ID] = []string{m.ID}
 		for i, e := range m.Effects {
 			ref := m.ID + "." + strconv.Itoa(i+1)
-			v := strings.TrimSpace(strings.TrimSpace(e.Slot+": "+e.Before+" -> "+e.Value) + " " + e.Status)
-			bodies[ref] = m.Body + " [" + v + "]"
+			if !muted {
+				v := strings.TrimSpace(strings.TrimSpace(e.Slot+": "+e.Before+" -> "+e.Value) + " " + e.Status)
+				bodies[ref] = m.Body + " [" + v + "]"
+			}
 			carried[m.ID] = append(carried[m.ID], ref)
 			carried[ref] = []string{m.ID, ref}
 		}
@@ -362,8 +402,26 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	marks := map[string]string{}
 	lastSize, lastSecret := 0, false
 	// a completing fact delivered without its event (the event was not
-	// chosen) keeps that event's protection on its own line (review 17 A-01)
+	// chosen) keeps that event's protection on its own line
 	alone := map[string]string{}
+	// what a record was recorded at (an event, or one value it set): its
+	// text shown away from that line (a basis quote, a pinned fact taken
+	// before any event) keeps that protection, along the whole chain of
+	// records recorded at records
+	recordedAt := map[string]string{}
+	for _, m := range k.Memories {
+		if m.At != "" {
+			recordedAt[m.ID] = m.At
+		}
+	}
+	protectAt := func(id string, own []memory.KnownAwareness, isSecret bool) ([]memory.KnownAwareness, bool) {
+		seen := map[string]bool{}
+		for at := recordedAt[id]; at != "" && !seen[at]; at = recordedAt[strings.SplitN(at, ".", 2)[0]] {
+			seen[at] = true
+			own, isSecret = protect(carried[at], own, isSecret)
+		}
+		return own, isSecret
+	}
 	take := func(c candidate) bool {
 		// a line carries the awareness of every record whose text it shows
 		// (its own effects, the record its basis points to), and is a
@@ -371,10 +429,13 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 		own, isSecret := protect(carried[c.id], nil, false)
 		if at := alone[c.id]; at != "" {
 			own, isSecret = protect(carried[at], own, isSecret)
+		} else if holds[c.id] == HoldPin {
+			own, isSecret = protectAt(c.id, own, isSecret)
 		}
 		basis, newMark := "", ""
 		if bs := c.mem.Basis; bs != nil && bodies[bs.Ref] != "" {
 			own, isSecret = protect(carried[bs.Ref], own, isSecret)
+			own, isSecret = protectAt(strings.SplitN(bs.Ref, ".", 2)[0], own, isSecret)
 			if mk, ok := marks[bs.Ref]; ok {
 				basis = "based on " + mk
 			} else {
@@ -445,7 +506,16 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 		out.Trace = append(out.Trace, row)
 	}
 	// Freeze the baseline selection; removal never fills freed capacity.
-	contrast, err := d.sceneContrast(k, req)
+	// The contrast is centered on the records this request can deliver (the
+	// candidates, outside the recent window), not every memory of the chat
+	// (1.1 B2): centered on the whole chat, right
+	// after the recent window its memories pulled the mean toward the scene
+	// and every baseline pick scored <=0, so the request got no memory.
+	pool := memory.Known{Memories: make([]memory.KnownMemory, 0, len(order))}
+	for _, c := range order {
+		pool.Memories = append(pool.Memories, *c.mem)
+	}
+	contrast, err := d.sceneContrast(pool, req)
 	if err != nil {
 		log.Printf("scene contrast skipped: %v", err)
 		contrast = nil // Discard partial scores and render the frozen baseline.
@@ -471,7 +541,7 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 				continue
 			}
 			// a completing fact whose event contrast removed is now shown
-			// without it: it keeps the event's protection (review 17 A-01)
+			// without it: it keeps the event's protection
 			if at := parent[id]; at != "" && removed(at) {
 				alone[id] = at
 			}
@@ -682,6 +752,125 @@ func (d *DB) turnJobs(t memory.ScopedTurn) ([]int64, memory.Source, error) {
 	return ids, src, err
 }
 
+// enteringFirst puts first, in rank order, the current facts (not a
+// completing fact) about a name the input gives that is missing from at
+// least one turn of the request's window, so the dialog does not keep
+// carrying its state (1.1 B1). With a long window this reads close to "a
+// name the input gives". Names the chat records as the same are one. Only
+// the order changes; the ceilings decide what is delivered as before; with
+// no window turn nothing moves.
+func enteringFirst(order []candidate, k memory.Known, window []memory.ScopedTurn, input string, parent map[string]string) []candidate {
+	same := map[string]string{}
+	for _, nm := range k.Names {
+		same[nm.ID] = nm.ID
+	}
+	root := func(id string) string {
+		if _, ok := same[id]; !ok {
+			return id
+		}
+		r := id
+		for same[r] != r {
+			r = same[r]
+		}
+		for same[id] != r { // path compression: long alias chains stay cheap
+			id, same[id] = same[id], r
+		}
+		return r
+	}
+	for _, r := range k.Relations {
+		_, a := same[r.Name]
+		_, b := same[r.SameAs]
+		if a && b {
+			same[root(r.Name)] = root(r.SameAs)
+		}
+	}
+	names := map[string][]string{}
+	for _, nm := range k.Names {
+		if nm.Name != "" {
+			names[root(nm.ID)] = append(names[root(nm.ID)], nm.Name)
+		}
+	}
+	texts := make([]string, 0, len(window))
+	for _, t := range window {
+		texts = append(texts, memory.TurnText(t.Source))
+	}
+	entering := map[string]bool{}
+	for id, ns := range names {
+		in := func(text string) bool {
+			for _, n := range ns {
+				if mentions(text, n) {
+					return true
+				}
+			}
+			return false
+		}
+		if !in(input) {
+			continue
+		}
+		held := 0
+		for _, t := range texts {
+			if in(t) {
+				held++
+			}
+		}
+		if held < len(texts) {
+			entering[id] = true
+		}
+	}
+	if len(entering) == 0 {
+		return order
+	}
+	var first, rest []candidate
+	for _, c := range order {
+		on := false
+		if c.mem.Kind == "fact" && parent[c.id] == "" {
+			on = entering[root(c.mem.About)]
+			for _, w := range c.mem.To {
+				on = on || entering[root(w)]
+			}
+		}
+		if on {
+			first = append(first, c)
+		} else {
+			rest = append(rest, c)
+		}
+	}
+	return append(first, rest...)
+}
+
+// mentions says whether text names n as a word. In scripts written with
+// spaces a name is not glued to letters before it ("린이" names 린, "어린"
+// does not) nor, for a name not ending in Hangul, to letters after it
+// ("Ann" is not in "Anna"); a Hangul name may take a particle, so a longer
+// word that begins with it ("린넨") still counts. Next to Han, Hiragana or
+// Katakana there are no spaces to read, so it counts there (花子は, 我看见小明).
+func mentions(text, n string) bool {
+	unspaced := func(r rune) bool {
+		return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana)
+	}
+	word := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+	first, size := utf8.DecodeRuneInString(n)
+	last, _ := utf8.DecodeLastRuneInString(n)
+	for i := 0; size > 0; {
+		j := strings.Index(text[i:], n)
+		if j < 0 {
+			return false
+		}
+		at := i + j
+		end := at + len(n)
+		prev, _ := utf8.DecodeLastRuneInString(text[:at])
+		next, _ := utf8.DecodeRuneInString(text[end:])
+		before := at == 0 || !word(prev) || unspaced(prev) || unspaced(first)
+		after := end == len(text) || !word(next) || unspaced(next) || unspaced(last) ||
+			unicode.Is(unicode.Hangul, last) || unicode.Is(unicode.Hangul, next)
+		if before && after {
+			return true
+		}
+		i = at + size // the next occurrence may overlap this one
+	}
+	return false
+}
+
 // knownScope reads the current memory of a read scope and the place in the
 // scope of each job's turn (the scope's story order: a branch's copied
 // parent turns keep the parent's turn numbers). With story, every item's
@@ -765,7 +954,7 @@ func deliveryLine(m memory.KnownMemory, names map[string]string, basis string, a
 	var b strings.Builder
 	fmt.Fprintf(&b, "- (T%d", m.Turn)
 	if m.Date != "" {
-		fmt.Fprintf(&b, ", %s", m.Date)
+		fmt.Fprintf(&b, ", %s", memory.DateShown(m.Date))
 	}
 	b.WriteString(") " + memory.DocText(m, names))
 	if bs := m.Basis; bs != nil {
@@ -774,7 +963,11 @@ func deliveryLine(m memory.KnownMemory, names map[string]string, basis string, a
 			parts = append(parts, bs.Via)
 		}
 		if bs.From != "" {
-			parts = append(parts, "from "+name(bs.From))
+			var from []string
+			for _, p := range memory.SourceParts(bs.From) {
+				from = append(from, name(p))
+			}
+			parts = append(parts, "from "+strings.Join(from, ", "))
 		}
 		if bs.Confidence != "" {
 			parts = append(parts, "confidence "+bs.Confidence)
@@ -818,21 +1011,32 @@ func deliveryLine(m memory.KnownMemory, names map[string]string, basis string, a
 }
 
 // similarities are the cosine similarities of the records' stored vectors
-// to the query vector, computed in MariaDB.
+// to the query vector, computed here from the stored bytes (1.1: no MariaDB
+// vector function, so a server older than 11.7 serves too). A record without
+// a vector, or a zero vector, has no similarity.
 func (d *DB) similarities(model string, query []float32, ids []string) (map[string]float64, error) {
 	out := map[string]float64{}
-	parts := make([]string, len(query))
+	dim := len(query)
+	var qnorm float64
+	q := make([]float64, dim)
 	for i, v := range query {
-		parts[i] = strconv.FormatFloat(float64(v), 'g', -1, 32)
+		q[i] = float64(v)
+		if math.IsNaN(q[i]) || math.IsInf(q[i], 0) {
+			return nil, fmt.Errorf("query vector is not finite")
+		}
+		qnorm += q[i] * q[i]
 	}
-	q := "[" + strings.Join(parts, ",") + "]"
+	if qnorm == 0 {
+		return out, nil
+	}
+	qnorm = math.Sqrt(qnorm)
 	for start := 0; start < len(ids); start += 500 {
 		part := ids[start:min(start+500, len(ids))]
-		args := []any{q, model}
+		args := []any{model}
 		for _, id := range part {
 			args = append(args, strings.TrimPrefix(id, "M"))
 		}
-		stmt := fmt.Sprintf("SELECT m.id, 1 - VEC_DISTANCE_COSINE(e.`vector`, VEC_FromText(?)) FROM memories m JOIN embedding_vectors_%d e ON e.model=? AND e.text_hash=m.doc_hash WHERE m.id IN (", len(query)) +
+		stmt := fmt.Sprintf("SELECT m.id, e.`vector` FROM memories m JOIN embedding_vectors_%d e ON e.model=? AND e.text_hash=m.doc_hash WHERE m.id IN (", dim) +
 			strings.TrimSuffix(strings.Repeat("?,", len(part)), ",") + ")"
 		rows, err := d.sql.Query(stmt, args...)
 		if err != nil {
@@ -843,10 +1047,23 @@ func (d *DB) similarities(model string, query []float32, ids []string) (map[stri
 		}
 		for rows.Next() {
 			var id int64
-			var s float64
-			if err := rows.Scan(&id, &s); err != nil {
+			var data sql.RawBytes
+			if err := rows.Scan(&id, &data); err != nil {
 				rows.Close()
 				return nil, err
+			}
+			if len(data) != dim*4 {
+				continue // a stored vector of another size has no similarity
+			}
+			var dot, norm float64
+			for i := 0; i < dim; i++ {
+				v := float64(math.Float32frombits(binary.LittleEndian.Uint32(data[4*i:])))
+				dot += v * q[i]
+				norm += v * v
+			}
+			s := dot / (math.Sqrt(norm) * qnorm)
+			if norm == 0 || math.IsNaN(s) || math.IsInf(s, 0) {
+				continue // a stored vector that cannot be compared has no similarity
 			}
 			out["M"+strconv.FormatInt(id, 10)] = s
 		}

@@ -12,11 +12,11 @@ import (
 	"archivecenter2/goservice/internal/diagnostics"
 )
 
-// Cross-review 03 (R1): an error written through the backend's log writer
-// keeps quoted lines indented; the startup log must not take them as a stage
-// and write them back as a progress line, nor mark startup ready from them.
-// Since 11-08 the quoted text is shown in the report (credentials masked); it
-// still must not act as a stage record.
+// An error written through the backend's log writer keeps quoted lines
+// indented; the startup log must not take them as a stage and write them back
+// as a progress line, nor mark startup ready from them. Since 11-08 the
+// quoted text is shown in the report (credentials masked); it still must not
+// act as a stage record.
 func TestStartupLogIgnoresStagesQuotedInsideAnIndentedErrorButReportShowsIt(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "logs"), 0o700); err != nil {

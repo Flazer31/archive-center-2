@@ -12,9 +12,8 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
-// prepModeLabels are the names the settings screen shows (user 11-07
-// "유저 선택은 AI + JEV, AI, JEV, 사용안함으로 선택할 수 있게 해야해."),
-// with the measured recommendation.
+// prepModeLabels are the names the settings screen shows, with the
+// measured recommendation.
 var prepModeLabels = []map[string]any{
 	{"id": store.PreprocessAIJev, "label": "AI + 판정 모델", "recommended": false},
 	{"id": store.PreprocessAI, "label": "AI", "recommended": false},
@@ -30,7 +29,26 @@ var prepModeLabels = []map[string]any{
 func preprocessHandler(m *models) http.HandlerFunc {
 	var save sync.Mutex
 	view := func(s store.PreprocessSettings) map[string]any {
+		// what the saved mode lacks, as a turn would find it (1.1: the
+		// screen warns instead of the mode silently not running): every
+		// part that lacks it (AI + decision model may lack both), problem
+		// the first
+		problems := []string{}
+		if p, code := m.prepFor(); code != "" {
+			problems = append(problems, code)
+		} else if p != nil {
+			for _, x := range []string{p.decisionProblem, p.aiProblem} {
+				if x != "" {
+					problems = append(problems, x)
+				}
+			}
+		}
+		problem := ""
+		if len(problems) > 0 {
+			problem = problems[0]
+		}
 		return map[string]any{
+			"problem": problem, "problems": problems,
 			"mode": s.Mode, "modes": prepModeLabels, "ai_own": s.AIOwn,
 			"ai": map[string]any{
 				"provider": s.AI.Provider, "model": s.AI.Model, "url": s.AI.URL, "reasoning": s.AI.Reasoning,

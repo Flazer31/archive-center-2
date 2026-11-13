@@ -62,8 +62,10 @@ func sourceOf(session string, t *lifecycle.Turn, whole bool) Source {
 		}
 		sr := SourceResponse{Key: r.Key, Gen: r.Gen}
 		// a newer generation was observed but its text not yet: the row is
-		// unread, not its earlier generation's text
-		if n := len(r.Revisions); n > 0 && (r.Gen == "" || r.Revisions[n-1].GenerationID == "" || r.Revisions[n-1].GenerationID == r.Gen) {
+		// unread, not its earlier generation's text. A blank text is the
+		// marker an emptied reply keeps (only the newest value is kept; a
+		// reply's real text is never blank): unread as well.
+		if n := len(r.Revisions); n > 0 && r.Revisions[n-1].Data != "" && (r.Gen == "" || r.Revisions[n-1].GenerationID == "" || r.Revisions[n-1].GenerationID == r.Gen) {
 			sr.Seq, sr.Data = r.Revisions[n-1].Seq, r.Revisions[n-1].Data
 		}
 		s.Responses = append(s.Responses, sr)

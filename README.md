@@ -1,6 +1,6 @@
 # Archive Center 2
 
-**[Archive Center 2 1.0.0](https://github.com/Flazer31/archive-center-2/releases/tag/v1.0.0)**
+**[Archive Center 2 1.1.0](https://github.com/Flazer31/archive-center-2/releases/tag/v1.1.0)**
 
 RisuAI와 PocketRisu에서 쓰는 장기 기억 도구예요. 대화가 길어져 앞부분이 요청에서 빠지기 시작하면, 지난 대화로 만들어 둔 기억 가운데 지금 장면에 필요한 것을 골라 요청에 함께 넣어요.
 
@@ -16,13 +16,14 @@ RisuAI와 PocketRisu에서 쓰는 장기 기억 도구예요. 대화가 길어�
 | 기억 만들기 | 다음 입력이 들어올 때 앞 턴을 "평론가" 모델이 읽고 사건·사실·생각 기억으로 저장해요. 누가 아는지, 누구에게 숨기는지, 값이 어떻게 바뀌었는지도 남겨요. |
 | 기억 넣기 | 요청마다 지금 장면과 이어지는 기억을 골라 예산(기본 일반 2,000자, 비밀 4,000자) 안에서 넣어요. |
 | 비밀 보호 | 숨겨야 하는 기억은 비밀 구역으로 따로 넣고, 누구에게 숨기는지 표시해요. |
+| 신체 추적 (선택) | 여성 인물의 월경 주기·임신·출산을 이야기 날짜로 계산해 넣어요. 기본은 꺼져 있어요. |
 | 고르기 방식 (선택) | 판정 모델이나 AI에게 한 번 더 물어 관계없는 기억을 빼는 "전처리". 기본은 꺼져 있어요. |
 | 서사 지원 (선택) | 이어지는 점을 짧게 정리하는 서사 가이드, 입력을 다듬는 입력 개선. 기본은 꺼져 있어요. |
 | 기억 관리 | 기억을 보고 고치고 지우기, 항상 넣기(고정)·넣지 않기(억제), 무엇이 왜 들어갔는지 보기. |
 
 ## 현재 버전
 
-이 저장소의 버전은 **1.0.0**이에요. 사용 중인 버전은 플러그인 표시와 AC2 설정의 '상태' 탭에서 확인하고, 플러그인과 백엔드는 같은 릴리스의 것을 맞춰 쓰세요.
+이 저장소의 버전은 **1.1.0**이에요. 1.0에서 바뀐 점과 올리는 방법은 [1.1.0 릴리스](https://github.com/Flazer31/archive-center-2/releases/tag/v1.1.0)에 있어요. 사용 중인 버전은 플러그인 표시와 AC2 설정의 '상태' 탭에서 확인하고, 플러그인과 백엔드는 같은 릴리스의 것을 맞춰 쓰세요.
 
 ## 설치
 
@@ -34,10 +35,10 @@ Linux x64/arm64, macOS Intel/Apple Silicon, Termux에서는 터미널에 아래 
 curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh
 ```
 
-기기에 맞는 패키지를 받아 SHA-256을 확인하고 `~/archive-center2/ac2-<버전>`에 풀어 바로 시작해요. 새 설치 전용이고, 같은 버전 폴더가 있으면 아무것도 바꾸지 않고 멈춰요. 다음부터는 그 폴더의 `01_AC2_start.sh`로 시작해요. 버전을 지정하려면 아래처럼 써요.
+기기에 맞는 패키지를 받아 SHA-256을 확인하고 `~/archive-center2/ac2-<버전>`에 풀어 바로 시작해요. 새 설치 전용이고, 같은 버전 폴더가 있으면 아무것도 바꾸지 않고 멈춰요. 다음부터는 그 폴더의 `01_AC2_start.sh`(macOS는 `01_AC2_start.command`)로 시작해요. Windows는 아래 ZIP으로 설치해요. 버전을 지정하려면 아래처럼 써요.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.0.0
+curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.1.0
 ```
 
 실제 Linux·macOS·Termux 기기에서는 확인하지 못했어요. 시작한 뒤에는 아래 3번부터 이어 가세요.
@@ -48,24 +49,24 @@ curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/inst
 
    | 운영체제 | 파일 | 시작 |
    |---|---|---|
-   | Windows x64 | `ac2-1.0.0-windows-amd64.zip` | `01_AC2_시작.cmd` 두 번 클릭 |
-   | Linux x64 / arm64 | `ac2-1.0.0-linux-amd64.zip` / `-linux-arm64.zip` | `sh 01_AC2_start.sh` |
-   | macOS Intel / Apple Silicon | `ac2-1.0.0-darwin-amd64.zip` / `-darwin-arm64.zip` | `01_AC2_start.command` |
-   | Termux arm64 | `ac2-1.0.0-android-arm64.zip` | `sh 01_AC2_start.sh` (Termux 홈 폴더 안에서) |
+   | Windows x64 | `ac2-1.1.0-windows-amd64.zip` | `01_AC2_시작.cmd` 두 번 클릭 |
+   | Linux x64 / arm64 | `ac2-1.1.0-linux-amd64.zip` / `-linux-arm64.zip` | `sh 01_AC2_start.sh` |
+   | macOS Intel / Apple Silicon | `ac2-1.1.0-darwin-amd64.zip` / `-darwin-arm64.zip` | `01_AC2_start.command` |
+   | Termux arm64 | `ac2-1.1.0-android-arm64.zip` | `sh 01_AC2_start.sh` (Termux 홈 폴더 안에서) |
 
    `bin` 폴더의 실행 파일을 직접 실행하지 마세요. Windows 외에는 해당 OS에서 실제로 실행해 보지 못했어요.
 
 2. 첫 시작 때 DB를 준비해요.
    - Windows: MariaDB(약 100MB)를 `%LOCALAPPDATA%\ArchiveCenter2\runtime` 아래에 한 번만 내려받아요.
-   - 그 밖: MariaDB 11.8 이상을 패키지 관리자로 준비해요. 관리자 암호를 물을 수 있어요.
+   - 그 밖: MariaDB 10.6.18 이상(10.11은 10.11.8, 11.4는 11.4.2 이상)을 패키지 관리자로 준비해요. 관리자 암호를 물을 수 있어요.
 
-3. RisuAI의 플러그인 관리에서 `archive-center-2.js`를 가져오고, AC2 설정 → 연결에 백엔드 주소를 넣어요. 같은 PC라면 `http://127.0.0.1:28190`이에요.
+3. RisuAI의 플러그인 관리에서 `archive-center-2.js`를 가져오고, 채팅 ≡ 메뉴의 "Archive Center 2"로 설정을 열어 연결 탭에 백엔드 주소를 넣어요. 같은 PC라면 `http://127.0.0.1:28190`이에요.
 
 4. AC2 설정의 '모델' 탭에서 평론가(기억을 만드는 모델)와 임베딩의 제공자·모델·키를 넣고 연결 시험을 해요.
 
 5. 대화를 진행하면 돼요. 기억은 다음 입력이 들어올 때 앞 턴의 것을 만들고, 대화가 한 번에 보내는 범위를 넘어선 뒤부터 요청에 들어가요.
 
-자세한 순서와 문제 해결은 릴리스에 함께 있는 `AC2-1.0.0-guide-ko.txt`를 보세요.
+자세한 순서와 문제 해결은 릴리스에 함께 있는 `AC2-1.1.0-guide-ko.txt`를 보세요.
 
 ## 데이터와 업데이트
 
@@ -78,14 +79,14 @@ curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/inst
 
 ## 알려진 제한
 
-- 오래전 기억 가운데 필요한 것을 못 가져오는 경우가 있어요.
-- 대화가 한 번에 보내는 범위를 막 넘어선 직후 몇 턴 동안, 기본 방식이 기억을 하나도 넣지 않는 경우가 있어요.
+- 오래전 기억 가운데 필요한 것을 못 가져오는 경우가 있어요(1.1에서 조금 나아짐).
 - 비밀 기억이 필요 이상으로 들어가는 경우가 있어요.
-- 응답이 아주 긴 턴(2만 자 이상)에서는 세부가 기억에서 빠질 수 있어요.
-- 전처리(판정 모델)는 요청마다 최근 대화 전문을 판정 모델에 보내서 입력이 커요.
+- 응답이 아주 긴 턴(2만 자 이상)은 나눠 읽게 바뀌었지만, 효과는 장면 하나에서만 확인했어요.
+- 전처리 AI와 출판사는 요청마다 최근 대화 전문을 보내서 입력이 커요.
+- 신체 추적은 이야기 안에서 태어난 딸도 어릴 때부터 주기를 계산해요.
 - 일부 화면과 기능은 실제 RisuAI·PocketRisu 화면에서 확인이 덜 됐어요.
 
-전체 목록은 `AC2-1.0.0-guide-ko.txt`의 "알려진 제한"에 있어요.
+전체 목록은 `AC2-1.1.0-guide-ko.txt`의 "알려진 제한"에 있어요.
 
 ## 소스에서 빌드
 
@@ -96,7 +97,7 @@ cd go-service
 go build ./cmd/ac2 ./cmd/ac2-updater
 ```
 
-시험은 MariaDB 11.8 이상이 필요해요. 시험용 DB 주소를 환경 변수로 넘겨요(시험마다 DB를 만들고 지우니 빈 시험용 서버를 쓰세요).
+시험은 MariaDB 10.6.18 이상(10.11은 10.11.8, 11.4는 11.4.2 이상)이 필요해요. 시험용 DB 주소를 환경 변수로 넘겨요(시험마다 DB를 만들고 지우니 빈 시험용 서버를 쓰세요).
 
 ```bash
 cd go-service

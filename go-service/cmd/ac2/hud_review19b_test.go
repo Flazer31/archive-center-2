@@ -18,8 +18,8 @@ import (
 	"time"
 )
 
-// Review 19, second check: the defects Sol reproduced on the first fixes,
-// asserted fixed (probe-02 in review 19), with its two passing controls.
+// Second check: the defects reproduced on the first fixes, asserted fixed,
+// with two passing controls.
 func TestHUDReview19OlderRetryIsFollowed(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once

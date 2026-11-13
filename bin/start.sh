@@ -178,8 +178,9 @@ else
     if ! command -v mariadbd >/dev/null 2>&1; then
         stage='MariaDB 설치'
         log_line '[준비] MariaDB 저장소와 서버·클라이언트 패키지를 준비합니다. sudo 사용 시 관리자 비밀번호를 물을 수 있습니다.'
-        # The AC2 store requires 11.8+. Debian/Ubuntu's older default
-        # packages do not meet that existing backend requirement.
+        # The AC2 store requires 10.6.18, 10.11.8 or 11.4.2+ (store.MinimumMariaDB);
+        # an older distribution package may be below it, so the MariaDB
+        # repository is used where it can be.
         if command -v apt-get >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1 || command -v zypper >/dev/null 2>&1; then
             command -v curl >/dev/null 2>&1 || { log_line 'MariaDB 저장소 준비에 curl이 필요합니다.'; exit 1; }
             run_logged mkdir -p bin/runtime
@@ -197,7 +198,7 @@ else
         elif command -v zypper >/dev/null 2>&1; then as_root zypper --non-interactive install MariaDB-server MariaDB-client
         elif command -v pacman >/dev/null 2>&1; then as_root pacman -S --needed --noconfirm mariadb
         elif command -v apk >/dev/null 2>&1; then as_root apk add --no-cache mariadb mariadb-client
-        else log_line '지원되는 패키지 관리자가 없습니다. MariaDB 11.8 이상을 설치한 뒤 다시 실행해 주세요.'; exit 1
+        else log_line '지원되는 패키지 관리자가 없습니다. MariaDB 10.6.18 이상(10.11은 10.11.8, 11.4는 11.4.2 이상)을 설치한 뒤 다시 실행해 주세요.'; exit 1
         fi
     fi
 fi

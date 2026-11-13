@@ -138,7 +138,7 @@ func TestU3TurnsAndRemake(t *testing.T) {
 	if len(listedAll) != 1 || listedAll[0]["body"] != "다른 턴" {
 		t.Fatalf("clear affected another turn: %v", listedAll)
 	}
-	// a cleared turn is made again (user 10-29): a new job waits for it
+	// a cleared turn is made again: a new job waits for it
 	job, err := db.JobFor(srcs[0])
 	if err != nil || job.ID == old.ID || job.State != "requested" {
 		t.Fatalf("clear did not remake the turn: %+v %v", job, err)
@@ -319,7 +319,7 @@ func TestU3InheritedManagementRemainsReadOnly(t *testing.T) {
 }
 
 // Deleting from the memory list: a turn left with none of its memories is
-// made again (user 10-29); a turn that keeps some is not.
+// made again; a turn that keeps some is not.
 func TestDeleteEmptyingATurnRemakesIt(t *testing.T) {
 	db, pipe, srcs := u3Fixture(t)
 	first := u3Save(t, db, srcs[0], `{"memories":[{"id":"m1","kind":"fact","body":"첫 턴 하나"},{"id":"m2","kind":"view","body":"첫 턴 둘"}]}`)

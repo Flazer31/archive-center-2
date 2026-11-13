@@ -161,7 +161,7 @@ func TestHooksWithoutChatGiveNoSnapshot(t *testing.T) {
 	}
 }
 
-// ---- Astra 16 ingest counterexamples (N3 late original, load), kept as regressions ----
+// ---- ingest counterexamples (late original, load), kept as regressions ----
 func TestAstra16IngestLateYumiOriginalKeepsCompletedGeneration(t *testing.T) {
 	raw := json.RawMessage(`{"hook":"output","listener":{"character_index":0,"chat_index":0,"message_index":1},"event_chat":{"chat_id":"c","rows":[{"i":0,"role":"user","chat_id":"u","data":{"text":"input"}},{"i":1,"role":"char","chat_id":"a","generation_id":"g1","data":{"text":"<!-- yumi-tr:v1:abc:start -->translation<!-- yumi-tr:v1:abc:end -->"}}]},"reread_chat":{"chat_id":"c","rows":[{"i":0,"role":"user","chat_id":"u","data":{"text":"input"}},{"i":1,"role":"char","chat_id":"a","generation_id":"g1","data":{"text":"<!-- yumi-tr:v1:abc:start -->translation<!-- yumi-tr:v1:abc:end -->"}}],"scriptstate":{"$__yumi_tr.abc":{"translation_record":true,"text":"u:{\"model\":\"original\"}"}}}}`)
 	res, err := FromEvent(raw, nil)
@@ -201,9 +201,9 @@ func TestUnknownTranslationRecordAsksForResend(t *testing.T) {
 	}
 }
 
-// ---- Astra 18 (N2 fingerprint collision, lone surrogate) ----
+// ---- fingerprint collision, lone surrogate ----
 
-// Astra 18's "Aa"/"B@" collided under the old 32-bit fingerprint; the 64-bit
+// "Aa"/"B@" collided under the old 32-bit fingerprint; the 64-bit
 // one separates them, and a changed body is never filled with the old text.
 func TestAstra18EqualLengthHashCollision(t *testing.T) {
 	a, b := "Aa", "B@"

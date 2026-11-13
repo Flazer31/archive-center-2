@@ -35,7 +35,7 @@ func rerollScript(t *testing.T, steps func(s *watched)) (*fakeModel, string, *li
 
 // watched runs the worker after each observation before the next input, as
 // the backend does on every change: no choice is made before the user goes
-// on (ASTRA-RECHECK-53 4.1).
+// on.
 type watched struct {
 	*lifecycle.Session
 	t *testing.T
