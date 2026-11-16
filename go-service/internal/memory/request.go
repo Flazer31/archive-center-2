@@ -17,6 +17,7 @@ Steps:
 1. Find what is new or changed in this turn. If it is already in KNOWN, do not write it again:
    - same thing mentioned again: {"ref": "<KNOWN id>", "q": "<quote>"}
    - something known that changed: write the new record with "was": "<KNOWN id>" (or a list of ids)
+   - A new record with "was" replaces that KNOWN record whole: the KNOWN record is no longer shown. When only part of it changed, write in the new record every detail of the KNOWN record that is still true (names, aliases, conditions, steps, who and where), and the change.
 2. For each new thing choose one kind: "event" (what happened), "fact" (what stays true), "view" (what one person thinks or feels).
 3. Do not leave out conditions, negation, who was involved, when, who told whom, and who knows or must not know.
    Look for what the text shows someone hides, does not know or is wrong about (a hidden thing or origin, a false identity, a lie or excuse told, a mistaken belief) and the reasons the text gives.

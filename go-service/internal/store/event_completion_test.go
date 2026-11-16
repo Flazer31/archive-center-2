@@ -58,11 +58,14 @@ func TestDeliverCompletesDeliveredEventOnly(t *testing.T) {
 				aware = append(aware, a)
 			}
 		}
-		sizes[m.ID] = recordSize(memory.RenderKnown(memory.Selection{Memories: []memory.KnownMemory{m}, Awareness: aware}, memory.Superseded(k)), deliveryLine(m, names, "", aware))
+		// the general lane counts the line sent (1.2)
+		sizes[m.ID] = lineSize(deliveryLine(m, names, "", aware))
 	}
 	// This ceiling is derived from the exact fixture records, not a fitted
-	// score or count. It leaves no room for the independent public fact.
-	paired := sizes[ids["event"]] + sizes[ids["rule"]]
+	// score or count.
+	// The general lane puts first one current fact of each entity the input
+	// names (리나's direct fact, 1.2), so each general ceiling holds it too.
+	paired := sizes[ids["direct_fact"]] + sizes[ids["event"]] + sizes[ids["rule"]]
 	for _, tc := range []struct {
 		name                 string
 		chars, secret        int
@@ -70,8 +73,8 @@ func TestDeliverCompletesDeliveredEventOnly(t *testing.T) {
 	}{
 		{"complete", paired, 4000, true, true},
 		{"no_secret_budget", paired, 0, true, false},
-		{"event_only_fits", sizes[ids["event"]], 4000, false, true},
-		{"no_event_fits", 0, 4000, false, true},
+		{"event_only_fits", sizes[ids["direct_fact"]] + sizes[ids["event"]], 4000, false, true},
+		{"no_event_fits", sizes[ids["direct_fact"]], 4000, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d, err := db.Deliver(memory.ScopeOf(s), DeliveryRequest{Input: input, Payload: printsOf(turnSource(s, 3)), Chars: tc.chars, Secret: tc.secret})

@@ -106,7 +106,7 @@ func TestIndexEmbedsOnceReusesAndFillsAfterFailure(t *testing.T) {
 	srv := f.server(t)
 	defer srv.Close()
 	v := provider.Voyage{URL: srv.URL + "/v1/embeddings", Model: "voyage-test", Key: "test-key", HTTP: srv.Client()}
-	job := saveTurn(t, db, `{"entities":[{"id":"n1","name":"한얼"}],"memories":[{"id":"m1","kind":"fact","about":"n1","slot":"돈","mode":"상태","body":"20냥"},{"id":"m2","kind":"event","body":"주막에 갔다"},{"id":"m3","kind":"event","body":"주막에 갔다"}]}`)
+	job := saveTurn(t, db, `{"entities":[{"id":"n1","name":"서준"}],"memories":[{"id":"m1","kind":"fact","about":"n1","slot":"돈","mode":"상태","body":"20냥"},{"id":"m2","kind":"event","body":"주막에 갔다"},{"id":"m3","kind":"event","body":"주막에 갔다"}]}`)
 
 	f.down = true
 	r, err := Index(context.Background(), db, v, "voyage-test", []int64{job}, 1)
@@ -122,7 +122,7 @@ func TestIndexEmbedsOnceReusesAndFillsAfterFailure(t *testing.T) {
 		t.Fatalf("filled run: %+v %v", r, err)
 	}
 	first := f.requests[1]
-	if first["model"] != "voyage-test" || first["input_type"] != "document" || first["input"].([]any)[0] != "fact/상태 한얼 돈: 20냥" {
+	if first["model"] != "voyage-test" || first["input_type"] != "document" || first["input"].([]any)[0] != "fact/상태 서준 돈: 20냥" {
 		t.Fatalf("request %v", first)
 	}
 	r, _ = Index(context.Background(), db, v, "voyage-test", []int64{job}, 1)

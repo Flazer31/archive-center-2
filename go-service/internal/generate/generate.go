@@ -230,10 +230,37 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 		if newer != nil && newer() {
 			return r, errNewer
 		}
-		if err := st.StartAttempt(job); err != nil {
-			return r, err
-		}
+		// a reply another plugin rewrote with markup only (1.2) gives the
+		// critic the exact request an earlier job of this turn sent: that
+		// job's answer is stored for this one, without a call. A request
+		// that differs in anything (instructions, KNOWN, date, text) is sent
+		// as usual; a long reply's parts are always sent. Only an answer
+		// that reads whole is reused (a broken one an earlier job accepted
+		// after its one more try would make this job unreadable again
+		// without a call), recorded under the model that made it.
+		reused := false
 		if len(parts) == 1 {
+			if sr, ok := st.(interface {
+				SameRequestAnswer(string, int, string, int64) (string, string, bool, error)
+			}); ok {
+				if madeBy, resp, found, err := sr.SameRequestAnswer(src.Session, src.Turn, r.Prompt, job.ID); err == nil && found {
+					if out, notes := memory.Parse(resp); !needsCall(out, notes, false) {
+						model = madeBy
+						r.Result = provider.Result{Content: resp}
+						r.Reused, reused = true, true
+						keepNote = append(keepNote, "same request as an earlier job of this turn: its answer was stored, no call")
+					}
+				}
+			}
+		}
+		if !reused {
+			if err := st.StartAttempt(job); err != nil {
+				return r, err
+			}
+		}
+		if reused {
+			// stored below as a received answer
+		} else if len(parts) == 1 {
 			r.Result, err = p.Chat(ctx, r.Prompt)
 			if err != nil {
 				r.CallFailed = true

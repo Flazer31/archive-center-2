@@ -153,7 +153,7 @@ func TestA29SavedGLMProtection(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	sel := memory.Select(k, "태블릿을 감춘 한얼", nil)
+	sel := memory.Select(k, "태블릿을 감춘 서준", nil)
 	rendered := memory.RenderKnown(sel, memory.Superseded(k))
 	t.Logf("parse notes=%v stored awareness=%+v rendered protection=%v", notes, k.Awareness, strings.Contains(rendered, "hide_from: 조선 사람들"))
 	if !strings.Contains(rendered, "hide_from: 조선 사람들") {

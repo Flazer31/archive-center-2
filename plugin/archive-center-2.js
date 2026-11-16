@@ -1,7 +1,7 @@
 //@name archive_center_2
-//@display-name Archive Center 2 1.1.0
+//@display-name Archive Center 2 1.2.0
 //@api 3.0
-//@version 1.1.0
+//@version 1.2.0
 //@arg ac2_url string Backend URL until this device saves its own in the settings screen (default http://127.0.0.1:28190)
 //@arg ac2_token string Access token until this device saves its own (token.txt in the backend's shared data directory)
 //@arg ac2_hash_only int 1 = send only hash and length (no memories can be made), 0 = send message text (default)
@@ -10,7 +10,7 @@
 // the backend chooses into the request. It never changes the response or
 // the chat. Decisions belong to the backend.
 (async () => {
-  const PLUGIN_VERSION = "1.1.0";
+  const PLUGIN_VERSION = "1.2.0";
   const CONTRACT = "observation.v1";
   const FETCH_TIMEOUT_MS = 8000;
   const api = Risuai;
@@ -2352,6 +2352,9 @@
   // over_ceiling is decided when the budget is first filled; scene contrast
   // removes afterwards and never refills, so it is not "budget left over".
   const PICK_TEXT = { taken: ["넣음", "acc"], over_ceiling: ["순위에서 밀림", ""], parent_not_taken: ["근거 사건이 안 들어가 빠짐", ""], contrast_removed: ["장면 대비 단계에서 빠짐", ""], not_chosen: ["전처리에서 고르지 않음", ""] };
+  // why (1.2): the reason Go gives for a general-lane row; "secret" rows keep the rank
+  const WHY_TEXT = { input_fact: "입력에 나온 대상의 현재 사실", called: "입력·직전 턴에 나온 대상", returning: "다시 나온 대상의 지난 장면", here: "지금 장소의 규칙",
+    roster: "최근 대화에 나온 인물", selected: "단어·장면·연결로 찾음", with_event: "함께 들어간 사건의 사실" };
   function pickedBox(chatId, id) {
     const list = el("div", { class: "ac2-list" });
     const note = el("div", { class: "ac2-help" });
@@ -2367,7 +2370,8 @@
         // C18 a pinned row is not ranked: it goes first into its budget
         const pin = t.hold === "pin";
         const [text, tone] = pin && t.result === "over_ceiling" ? ["예산에 들어가지 못함", ""] : PICK_TEXT[t.result] || [t.result, ""];
-        const bits = [t.id, KIND_TEXT[t.kind] || t.kind, t.turn ? t.turn + "턴" : "", pin ? "고정 · 순위 없이 예산에 먼저" : "등수 합 " + t.rank, t.size ? t.size + "자" : "",
+        const general = t.why && t.why !== "secret";
+        const bits = [t.id, KIND_TEXT[t.kind] || t.kind, t.turn ? t.turn + "턴" : "", pin ? "고정 · 순위 없이 예산에 먼저" : general ? WHY_TEXT[t.why] || t.why : "등수 합 " + t.rank, t.size ? t.size + "자" : "",
           t.unrelated != null ? "판정 관계없음 " + Math.round(t.unrelated * 100) + "%" : "", t.ai_unrelated != null ? "AI " + (t.ai_unrelated ? "관계없음" : "관계있음") : ""].filter(Boolean);
         list.append(el("div", { class: "ac2-item" }, el("div", { class: "ac2-top", style: "align-items:center" },
           el("div", { class: "ac2-main ac2-meta" }, bits.join(" · ")), pin ? tag("고정", "acc") : null, t.secret ? tag("비밀", "vio") : null, tag(text, tone))));
@@ -2375,7 +2379,7 @@
         if (t.result === "over_ceiling") pushed = true;
         if (t.result === "contrast_removed") removed = true;
       }
-      note.textContent = "후보 " + d.row_total + "개 중 " + shown + "개 · 위에서부터 Go가 본 순서예요. 등수 합은 작을수록 앞이에요." +
+      note.textContent = "후보 " + d.row_total + "개 중 " + shown + "개 · 위에서부터 Go가 본 순서예요. 일반 기억은 고른 이유를, 비밀 기억은 등수 합(작을수록 앞)을 보여 줘요." +
         (pushed ? " '순위에서 밀림'은 처음 예산을 채울 때 자리가 없던 기억이에요." : "") +
         (removed ? " 장면 대비로 뺀 자리는 다른 기억으로 다시 채우지 않아요." : "");
       if (d.next_cursor != null) { cursor = d.next_cursor; more.append(sbtn("더 보기", load)); }

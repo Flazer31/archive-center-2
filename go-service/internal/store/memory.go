@@ -126,6 +126,38 @@ func (d *DB) KeepResponse(j Job, model, request, readItems, response string) err
 	return err
 }
 
+// SameRequestAnswer is the answer of an earlier done job of the same turn
+// that sent exactly this request to the critic: a reply another plugin
+// rewrote with markup only reads the same, so its job builds the same
+// request (instructions, KNOWN, date and turn text all equal). A turn the
+// user asked to make (a remake, or earlier history made on request: a
+// grant) is made by the model, never from an earlier answer. model is the
+// one that made the answer. found is false when there is none; the newest
+// such job is taken.
+func (d *DB) SameRequestAnswer(session string, turn int, request string, before int64) (model, response string, found bool, err error) {
+	if request == "" {
+		return "", "", false, nil
+	}
+	rows, err := d.sql.Query(`SELECT COALESCE(model,''), COALESCE(request,''), COALESCE(response,'') FROM gen_jobs
+		WHERE session_key=? AND turn_id=? AND job_id<? AND state='done' AND COALESCE(response,'')<>''
+		AND NOT EXISTS (SELECT 1 FROM gen_grants g WHERE g.session_key=? AND g.turn_id=?) ORDER BY job_id DESC`, session, turn, before, session, turn)
+	if err != nil {
+		return "", "", false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var m, req, resp string
+		if err := rows.Scan(&m, &req, &resp); err != nil {
+			return "", "", false, err
+		}
+		// compared here, byte for byte (not by the column's collation)
+		if req == request {
+			return m, resp, true, nil
+		}
+	}
+	return "", "", false, rows.Err()
+}
+
 // Generation is what a job sent and got back.
 type Generation struct {
 	Model     string

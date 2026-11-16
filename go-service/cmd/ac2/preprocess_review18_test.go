@@ -103,10 +103,12 @@ func TestPreprocessPinnedAccounting(t *testing.T) {
 
 // B-03: Go renders the final set again; an addition chosen first is not
 // pushed out by a later one that grew there (its basis definition left out).
+// (1.2: all four records are views, so the general lane keeps them in
+// stored order.)
 func TestPreprocessFinalRenderKeepsPriority(t *testing.T) {
 	h := hudFixture(t, "", 0)
 	s, _ := injectionSeed(t, h, "BAS")
-	ids := injectionSave(t, h.db, s[0].Source, `{"entities":[{"id":"n1","name":"리나"}],"memories":[{"id":"m1","kind":"view","owner":"n1","body":"버릴 생각","basis":{"ref":"m4"}},{"id":"m2","kind":"view","owner":"n1","body":"남길 생각","basis":{"ref":"m4"}},{"id":"m3","kind":"fact","about":"n1","slot":"a","body":"우선할 기억 `+strings.Repeat("기록", 30)+`"},{"id":"m4","kind":"event","body":"근거 원문 `+strings.Repeat("긴 근거", 70)+`"}]}`)
+	ids := injectionSave(t, h.db, s[0].Source, `{"entities":[{"id":"n1","name":"리나"}],"memories":[{"id":"m1","kind":"view","owner":"n1","body":"버릴 생각","basis":{"ref":"m4"}},{"id":"m2","kind":"view","owner":"n1","body":"남길 생각","basis":{"ref":"m4"}},{"id":"m3","kind":"view","owner":"n1","body":"우선할 기억 `+strings.Repeat("기록", 30)+`"},{"id":"m4","kind":"view","owner":"n1","body":"근거 원문 `+strings.Repeat("긴 근거", 70)+`"}]}`)
 	a, later, first := ids["memories/0"], ids["memories/1"], ids["memories/2"]
 	r := r18Request()
 	w, _ := h.db.Deliver(s, r)

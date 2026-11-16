@@ -1,6 +1,6 @@
 # Archive Center 2
 
-**[Archive Center 2 1.1.0](https://github.com/Flazer31/archive-center-2/releases/tag/v1.1.0)**
+**[Archive Center 2 1.2.0](https://github.com/Flazer31/archive-center-2/releases/tag/v1.2.0)**
 
 RisuAI와 PocketRisu에서 쓰는 장기 기억 도구예요. 대화가 길어져 앞부분이 요청에서 빠지기 시작하면, 지난 대화로 만들어 둔 기억 가운데 지금 장면에 필요한 것을 골라 요청에 함께 넣어요.
 
@@ -23,7 +23,7 @@ RisuAI와 PocketRisu에서 쓰는 장기 기억 도구예요. 대화가 길어�
 
 ## 현재 버전
 
-이 저장소의 버전은 **1.1.0**이에요. 1.0에서 바뀐 점과 올리는 방법은 [1.1.0 릴리스](https://github.com/Flazer31/archive-center-2/releases/tag/v1.1.0)에 있어요. 사용 중인 버전은 플러그인 표시와 AC2 설정의 '상태' 탭에서 확인하고, 플러그인과 백엔드는 같은 릴리스의 것을 맞춰 쓰세요.
+이 저장소의 버전은 **1.2.0**이에요. 1.1에서 바뀐 점과 올리는 방법은 [1.2.0 릴리스](https://github.com/Flazer31/archive-center-2/releases/tag/v1.2.0)에 있어요. 사용 중인 버전은 플러그인 표시와 AC2 설정의 '상태' 탭에서 확인하고, 플러그인과 백엔드는 같은 릴리스의 것을 맞춰 쓰세요.
 
 ## 설치
 
@@ -35,13 +35,29 @@ Linux x64/arm64, macOS Intel/Apple Silicon, Termux에서는 터미널에 아래 
 curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh
 ```
 
-기기에 맞는 패키지를 받아 SHA-256을 확인하고 `~/archive-center2/ac2-<버전>`에 풀어 바로 시작해요. 새 설치 전용이고, 같은 버전 폴더가 있으면 아무것도 바꾸지 않고 멈춰요. 다음부터는 그 폴더의 `01_AC2_start.sh`(macOS는 `01_AC2_start.command`)로 시작해요. Windows는 아래 ZIP으로 설치해요. 버전을 지정하려면 아래처럼 써요.
+기기에 맞는 패키지를 받아 SHA-256을 확인하고 `~/archive-center2/ac2-<버전>`에 풀어 바로 시작해요. 새 설치 전용이고, 같은 버전 폴더가 있으면 아무것도 바꾸지 않고 멈춰요. 다음부터는 그 폴더의 `01_AC2_start.sh`(macOS는 `01_AC2_start.command`)로 시작해요. 버전을 지정하려면 아래처럼 써요.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.1.0
+curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.2.0
 ```
 
 실제 Linux·macOS·Termux 기기에서는 확인하지 못했어요. 시작한 뒤에는 아래 3번부터 이어 가세요.
+
+### 한 줄 설치 (Windows)
+
+PowerShell에 아래 명령을 넣어요.
+
+```powershell
+irm https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install-windows.ps1 | iex
+```
+
+Windows 패키지를 받아 SHA-256을 확인하고 `%USERPROFILE%rchive-center2c2-<버전>`에 풀어 바로 시작해요. 새 설치 전용이고, 같은 버전 폴더가 있으면 아무것도 바꾸지 않고 멈춰요. 다음부터는 그 폴더의 `01_AC2_시작.cmd`로 시작해요. 버전을 지정하려면 아래처럼 써요.
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install-windows.ps1))) -Version 1.2.0
+```
+
+시작한 뒤에는 아래 3번부터 이어 가세요.
 
 ### ZIP으로 설치
 
@@ -49,10 +65,10 @@ curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/inst
 
    | 운영체제 | 파일 | 시작 |
    |---|---|---|
-   | Windows x64 | `ac2-1.1.0-windows-amd64.zip` | `01_AC2_시작.cmd` 두 번 클릭 |
-   | Linux x64 / arm64 | `ac2-1.1.0-linux-amd64.zip` / `-linux-arm64.zip` | `sh 01_AC2_start.sh` |
-   | macOS Intel / Apple Silicon | `ac2-1.1.0-darwin-amd64.zip` / `-darwin-arm64.zip` | `01_AC2_start.command` |
-   | Termux arm64 | `ac2-1.1.0-android-arm64.zip` | `sh 01_AC2_start.sh` (Termux 홈 폴더 안에서) |
+   | Windows x64 | `ac2-1.2.0-windows-amd64.zip` | `01_AC2_시작.cmd` 두 번 클릭 |
+   | Linux x64 / arm64 | `ac2-1.2.0-linux-amd64.zip` / `-linux-arm64.zip` | `sh 01_AC2_start.sh` |
+   | macOS Intel / Apple Silicon | `ac2-1.2.0-darwin-amd64.zip` / `-darwin-arm64.zip` | `01_AC2_start.command` |
+   | Termux arm64 | `ac2-1.2.0-android-arm64.zip` | `sh 01_AC2_start.sh` (Termux 홈 폴더 안에서) |
 
    `bin` 폴더의 실행 파일을 직접 실행하지 마세요. Windows 외에는 해당 OS에서 실제로 실행해 보지 못했어요.
 
@@ -60,13 +76,13 @@ curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/inst
    - Windows: MariaDB(약 100MB)를 `%LOCALAPPDATA%\ArchiveCenter2\runtime` 아래에 한 번만 내려받아요.
    - 그 밖: MariaDB 10.6.18 이상(10.11은 10.11.8, 11.4는 11.4.2 이상)을 패키지 관리자로 준비해요. 관리자 암호를 물을 수 있어요.
 
-3. RisuAI의 플러그인 관리에서 `archive-center-2.js`를 가져오고, 채팅 ≡ 메뉴의 "Archive Center 2"로 설정을 열어 연결 탭에 백엔드 주소를 넣어요. 같은 PC라면 `http://127.0.0.1:28190`이에요.
+3. RisuAI 플러그인 화면의 **+** 버튼으로 설치 폴더의 `archive-center-2.js`를 가져오고, 채팅 ≡ 메뉴의 "Archive Center 2"로 설정을 열어 연결 탭에 백엔드 주소를 넣어요. 같은 PC라면 `http://127.0.0.1:28190`이에요.
 
 4. AC2 설정의 '모델' 탭에서 평론가(기억을 만드는 모델)와 임베딩의 제공자·모델·키를 넣고 연결 시험을 해요.
 
-5. 대화를 진행하면 돼요. 기억은 다음 입력이 들어올 때 앞 턴의 것을 만들고, 대화가 한 번에 보내는 범위를 넘어선 뒤부터 요청에 들어가요.
+5. 대화를 진행하면 돼요. 기억은 다음 입력이 들어올 때 앞 턴의 것을 만들고, 대화가 한 번에 보내는 범위(RisuAI 최대 컨텍스트)를 넘어선 뒤부터 요청에 들어가요. 그 전에도 기억은 만들어 두고 있어요. 긴 문맥에 약한 모델이라면 최대 컨텍스트를 AC2 몫(기본 일반 2,000자·비밀 4,000자)만큼 낮춰 두세요.
 
-자세한 순서와 문제 해결은 릴리스에 함께 있는 `AC2-1.1.0-guide-ko.txt`를 보세요.
+자세한 순서와 문제 해결은 릴리스에 함께 있는 `AC2-1.2.0-guide-ko.txt`를 보세요.
 
 ## 데이터와 업데이트
 
@@ -77,16 +93,31 @@ curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/inst
 - 오류와 로그는 그대로 보여 주고 API 키·토큰·비밀번호 값만 가려요. 등록되지 않은 오류도 백엔드가 보낸 코드와 설명을 함께 보여 줘요.
 - 기본 설정은 모든 주소에서 연결을 받아요. 이 PC에서만 받게 하려면 시작 파일 뒤에 `-listen 127.0.0.1`을 붙이세요.
 
+## 1.1로 되돌아가기
+
+1.2에 문제가 있으면 1.1로 돌아갈 수 있어요. 1.2와 1.1은 DB 구조와 기억 저장 형식이 같아서, 1.2에서 만든 기억과 설정을 1.1이 그대로 읽어요.
+
+1. 실행 중인 1.2를 꺼요(Windows는 `02_AC2_종료.cmd`).
+2. 1.1을 시작해요.
+   - 1.1 폴더가 남아 있으면 그 폴더의 시작 파일을 실행해요.
+   - 없으면 1.1을 새로 설치해요.
+     - Windows: `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install-windows.ps1))) -Version 1.1.0`
+     - Linux·macOS·Termux: `curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.1.0`
+     - 또는 [1.1.0 릴리스](https://github.com/Flazer31/archive-center-2/releases/tag/v1.1.0)의 ZIP을 새 폴더에 풀어요.
+3. RisuAI 플러그인 화면의 **+** 버튼으로 1.1 폴더의 `archive-center-2.js`를 다시 가져와요.
+
+다시 1.2로 올 때도 같은 방법으로 1.2를 시작하고 1.2의 `archive-center-2.js`를 가져오면 돼요.
+
 ## 알려진 제한
 
-- 오래전 기억 가운데 필요한 것을 못 가져오는 경우가 있어요(1.1에서 조금 나아짐).
+- 오래전 기억 가운데 필요한 것을 못 가져오는 경우가 있어요(1.2에서 나아짐). 누가 무엇을 모르는지는 아직 기억으로 잘 만들어지지 않아요.
 - 비밀 기억이 필요 이상으로 들어가는 경우가 있어요.
 - 응답이 아주 긴 턴(2만 자 이상)은 나눠 읽게 바뀌었지만, 효과는 장면 하나에서만 확인했어요.
-- 전처리 AI와 출판사는 요청마다 최근 대화 전문을 보내서 입력이 커요.
+- 전처리 AI는 요청마다 최근 대화 전문을 보내서 입력이 커요.
 - 신체 추적은 이야기 안에서 태어난 딸도 어릴 때부터 주기를 계산해요.
 - 일부 화면과 기능은 실제 RisuAI·PocketRisu 화면에서 확인이 덜 됐어요.
 
-전체 목록은 `AC2-1.1.0-guide-ko.txt`의 "알려진 제한"에 있어요.
+전체 목록은 `AC2-1.2.0-guide-ko.txt`의 "알려진 제한"에 있어요.
 
 ## 소스에서 빌드
 

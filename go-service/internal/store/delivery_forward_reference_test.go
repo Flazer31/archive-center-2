@@ -65,7 +65,11 @@ func TestDeliverDefinesForwardBasisOnSource(t *testing.T) {
 					basis = "based on B1"
 				}
 				line := deliveryLine(km, names, basis, aware)
-				charge += recordSize(memory.RenderKnown(memory.Selection{Memories: []memory.KnownMemory{km}, Awareness: aware}, nil), line)
+				if secret {
+					charge += recordSize(memory.RenderKnown(memory.Selection{Memories: []memory.KnownMemory{km}, Awareness: aware}, nil), line)
+				} else {
+					charge += lineSize(line) // the general lane counts the line sent (1.2)
+				}
 				if i == 0 {
 					km.Body = "[text B1]"
 					line = deliveryLine(km, names, basis, aware)
@@ -128,7 +132,7 @@ func TestShareDeliveryBasisKeepsOtherRepresentations(t *testing.T) {
 				want[1] = deliveryLine(source, nil, "", nil)
 				source.Body = tc.body
 			}
-			shareDeliveryBasis(lines, ids, rendered, map[string]string{tc.ref: "B1"}, nil)
+			shareDeliveryBasis(lines, ids, rendered, map[string]string{tc.ref: "B1"}, nil, nil, nil)
 			if !reflect.DeepEqual(lines, want) || source.Body != tc.body || rendered[0].basis != basis {
 				t.Fatalf("existing representation or stored input changed: %q want %q", lines, want)
 			}
@@ -155,7 +159,7 @@ func TestShareDeliveryBasisKeepsNestedViewDefinitions(t *testing.T) {
 		ids = append(ids, mems[i].ID)
 	}
 	otherOccurrence := lines[3]
-	shareDeliveryBasis(lines, ids, rendered, map[string]string{"M1": "B1", "M2": "B2"}, nil)
+	shareDeliveryBasis(lines, ids, rendered, map[string]string{"M1": "B1", "M2": "B2"}, nil, nil, nil)
 	for i, mark := range []string{"B1", "B2"} {
 		if !strings.Contains(lines[i], `[text `+mark+`="`+mems[i].Body+`"]`) || strings.Contains(lines[i+1], "based on "+mark+" \"") {
 			t.Fatalf("nested source/definition overwritten: %q", lines)

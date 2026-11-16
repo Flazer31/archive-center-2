@@ -37,7 +37,7 @@ func TestSavedItemsAreIndexedForSearch(t *testing.T) {
 	n1, m1 := it.Names[0].ID, it.Memories[0].ID
 	m2, m3 := it.Memories[1].ID, it.Memories[2].ID
 	words := entries(t, db, `SELECT item, field, word FROM search_words WHERE session_key=? AND job_id=?`, job.Session, job.ID)
-	for _, want := range []string{m1 + " body 한얼", m1 + " body 30냥", m1 + " q 갚았다", m1 + " effect 50냥", m1 + " effect_slot 돈", m2 + " slot 돈", m3 + " body 후련함"} {
+	for _, want := range []string{m1 + " body 서준", m1 + " body 30냥", m1 + " q 갚았다", m1 + " effect 50냥", m1 + " effect_slot 돈", m2 + " slot 돈", m3 + " body 후련함"} {
 		if !words[want] {
 			t.Errorf("word %q not indexed: %v", want, words)
 		}

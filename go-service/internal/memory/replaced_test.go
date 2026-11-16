@@ -10,11 +10,11 @@ import (
 // one of them under their own slot; the same fact named under one other
 // slot, or by a record of its own slot, is replaced as before.
 func TestSupersededKeepsAFactChangedInPart(t *testing.T) {
-	profile := KnownMemory{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", About: "N1", Slot: "현재 상태", Body: "한얼은 18세이고 15냥을 가졌으며 저택에 있다"}}
+	profile := KnownMemory{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", About: "N1", Slot: "현재 상태", Body: "서준은 18세이고 15냥을 가졌으며 저택에 있다"}}
 	money := KnownMemory{ID: "M2", Turn: 2, Memory: Memory{Kind: "event", Body: "한 냥을 썼다", Effects: []Effect{{About: "N1", Slot: "소지금", Before: "15냥", Value: "14냥", Was: Refs{"M1"}}}}}
 	place := KnownMemory{ID: "M3", Turn: 3, Memory: Memory{Kind: "event", Body: "한양에 갔다", Effects: []Effect{{About: "N1", Slot: "위치", Before: "저택", Value: "한양", Was: Refs{"M1"}}}}}
-	skill := KnownMemory{ID: "M4", Turn: 4, Memory: Memory{Kind: "fact", About: "N1", Slot: "습득 능력", Body: "한얼은 서예를 익혔다", Was: Refs{"M1"}}}
-	k := Known{Names: []KnownName{{ID: "N1", Name: "한얼"}}, Memories: []KnownMemory{profile, money, place, skill}}
+	skill := KnownMemory{ID: "M4", Turn: 4, Memory: Memory{Kind: "fact", About: "N1", Slot: "습득 능력", Body: "서준은 서예를 익혔다", Was: Refs{"M1"}}}
+	k := Known{Names: []KnownName{{ID: "N1", Name: "서준"}}, Memories: []KnownMemory{profile, money, place, skill}}
 	if Superseded(k)["M1"] {
 		t.Fatal("a fact changed under three other slots was replaced whole: the value nobody changed is lost")
 	}
@@ -23,7 +23,7 @@ func TestSupersededKeepsAFactChangedInPart(t *testing.T) {
 	}
 	// the generation call reads it again as a current fact of the person
 	shown := false
-	for _, m := range Select(k, "한얼이 걸었다", nil).Memories {
+	for _, m := range Select(k, "서준이 걸었다", nil).Memories {
 		shown = shown || m.ID == "M1"
 	}
 	if !shown {
@@ -36,13 +36,13 @@ func TestSupersededKeepsAFactChangedInPart(t *testing.T) {
 		t.Fatalf("one other slot: superseded %v partly %v", Superseded(one), PartlyChanged(one))
 	}
 	// a record of its own slot replaces it whatever else names it
-	whole := KnownMemory{ID: "M5", Turn: 5, Memory: Memory{Kind: "fact", About: "N1", Slot: "현재 상태", Body: "한얼은 19세이다", Was: Refs{"M1"}}}
+	whole := KnownMemory{ID: "M5", Turn: 5, Memory: Memory{Kind: "fact", About: "N1", Slot: "현재 상태", Body: "서준은 19세이다", Was: Refs{"M1"}}}
 	k.Memories = append(k.Memories, whole)
 	if !Superseded(k)["M1"] || len(PartlyChanged(k)) != 0 {
 		t.Fatalf("own slot: superseded %v partly %v", Superseded(k), PartlyChanged(k))
 	}
 	// a record without a slot (a view, a slotless fact) replaces as before
-	k.Memories[4] = KnownMemory{ID: "M5", Turn: 5, Memory: Memory{Kind: "fact", Body: "한얼의 사정이 달라졌다", Was: Refs{"M1"}}}
+	k.Memories[4] = KnownMemory{ID: "M5", Turn: 5, Memory: Memory{Kind: "fact", Body: "서준의 사정이 달라졌다", Was: Refs{"M1"}}}
 	if !Superseded(k)["M1"] {
 		t.Fatal("a slotless record's was stopped replacing")
 	}
@@ -68,10 +68,16 @@ func TestSupersededKeepsAnEventNamedByAnEffect(t *testing.T) {
 	if sup = Superseded(k); sup["M1"] || !sup["M1.1"] || !sup["M1.2"] {
 		t.Fatalf("no value of that slot: %v", sup)
 	}
-	// a record that names the event by its own was still replaces it whole
+	// a fact that names the event by its own was replaces all the values it
+	// set; what happened stays (11-14, user: event protection)
 	k.Memories = append(k.Memories, KnownMemory{ID: "M3", Turn: 3, Memory: Memory{Kind: "fact", About: "N1", Slot: "소지금", Body: "20냥이 있다", Was: Refs{"M1"}}})
-	if sup = Superseded(k); !sup["M1"] || !sup["M1.2"] {
-		t.Fatalf("memory-level was on an event: %v", sup)
+	if sup = Superseded(k); sup["M1"] || !sup["M1.1"] || !sup["M1.2"] {
+		t.Fatalf("memory-level was of a fact on an event: %v", sup)
+	}
+	// an event that names it by was replaces it whole
+	k.Memories = append(k.Memories, KnownMemory{ID: "M4", Turn: 4, Memory: Memory{Kind: "event", Body: "약재상을 만난 일은 없었다", Was: Refs{"M1"}}})
+	if sup = Superseded(k); !sup["M1"] {
+		t.Fatalf("memory-level was of an event on an event: %v", sup)
 	}
 }
 
@@ -80,13 +86,13 @@ func TestSupersededKeepsAnEventNamedByAnEffect(t *testing.T) {
 // old values of those are not taken as current; a fact replaced whole and an
 // unchanged fact carry no such note.
 func TestRenderKnownMarksAFactChangedInPart(t *testing.T) {
-	profile := KnownMemory{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", About: "N1", Slot: "현재 상태", Body: "한얼은 18세이고 15냥을 가졌으며 저택에 있다"}}
+	profile := KnownMemory{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", About: "N1", Slot: "현재 상태", Body: "서준은 18세이고 15냥을 가졌으며 저택에 있다"}}
 	money := KnownMemory{ID: "M2", Turn: 2, Memory: Memory{Kind: "event", Body: "한 냥을 썼다", Effects: []Effect{{About: "N1", Slot: "소지금", Before: "15냥", Value: "14냥", Was: Refs{"M1"}}}}}
 	place := KnownMemory{ID: "M3", Turn: 3, Memory: Memory{Kind: "event", Body: "한양에 갔다", Effects: []Effect{{About: "N1", Slot: "위치", Before: "저택", Value: "한양", Was: Refs{"M1"}}}}}
-	skill := KnownMemory{ID: "M4", Turn: 4, Memory: Memory{Kind: "fact", About: "N1", Slot: "습득 능력", Body: "한얼은 서예를 익혔다", Was: Refs{"M1"}}}
-	old := KnownMemory{ID: "M5", Turn: 1, Memory: Memory{Kind: "fact", About: "N1", Slot: "기분", Body: "한얼은 들떠 있다"}}
-	mood := KnownMemory{ID: "M6", Turn: 4, Memory: Memory{Kind: "fact", About: "N1", Slot: "기분", Body: "한얼은 지쳤다", Was: Refs{"M5"}}}
-	k := Known{Names: []KnownName{{ID: "N1", Name: "한얼"}}, Memories: []KnownMemory{profile, money, place, skill, old, mood}}
+	skill := KnownMemory{ID: "M4", Turn: 4, Memory: Memory{Kind: "fact", About: "N1", Slot: "습득 능력", Body: "서준은 서예를 익혔다", Was: Refs{"M1"}}}
+	old := KnownMemory{ID: "M5", Turn: 1, Memory: Memory{Kind: "fact", About: "N1", Slot: "기분", Body: "서준은 들떠 있다"}}
+	mood := KnownMemory{ID: "M6", Turn: 4, Memory: Memory{Kind: "fact", About: "N1", Slot: "기분", Body: "서준은 지쳤다", Was: Refs{"M5"}}}
+	k := Known{Names: []KnownName{{ID: "N1", Name: "서준"}}, Memories: []KnownMemory{profile, money, place, skill, old, mood}}
 	lineOf := func(text, id string) string {
 		for _, l := range strings.Split(text, "\n") {
 			if strings.HasPrefix(l, "["+id+"] ") {
@@ -96,7 +102,7 @@ func TestRenderKnownMarksAFactChangedInPart(t *testing.T) {
 		return ""
 	}
 	// the earlier value M5 is brought by recall ("들떠"), so it is rendered too
-	sel, _ := SelectWithin(k, "한얼이 들떠 걸었다", nil, 0)
+	sel, _ := SelectWithin(k, "서준이 들떠 걸었다", nil, 0)
 	text := RenderKnown(sel, Superseded(k))
 	if l := lineOf(text, "M1"); !strings.Contains(l, " | changed later: 소지금, 위치, 습득 능력") {
 		t.Fatalf("partly changed fact read without the changed slots: %q\n%s", l, text)

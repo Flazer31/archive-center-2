@@ -37,6 +37,12 @@ import (
 // 100 s for it): the handler's context ends there.
 const narrTimeout = 60 * time.Second
 
+// publisherTurns is how many of the window's latest turns the publisher's
+// two calls read (1.2, as the decision model's decisionTurns: on the saved
+// 21 scenes the conversation was 90% of the guide prompt; two turns cut its
+// tokens 48%, with no more severe problems in a blind judgment).
+const publisherTurns = 2
+
 var narrDeadline = 95 * time.Second // a var only so a test can shorten it
 
 type narrDeps struct {
@@ -367,7 +373,7 @@ func narrative(ctx context.Context, n *narrDeps, d store.Delivery, scope []memor
 	var g narrGuide
 	var rw *inputRewrite
 	lines, shown := narrLines(d)
-	state := prepState(input, scope, d.Window)
+	state := prepState(input, scope, min(d.Window, publisherTurns))
 	wantGuide := n.s.Level != store.GuideOff
 	wantInput := n.s.Input != store.InputOff
 	switch {

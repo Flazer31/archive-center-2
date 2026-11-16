@@ -147,6 +147,18 @@ func deliveryLines(d store.Delivery) map[string]string {
 	return out
 }
 
+// wholeLines are a delivery's lines by id with each record's own text (no
+// shared-basis stub): the decision model is asked of one line at a time.
+func wholeLines(d store.Delivery) map[string]string {
+	out := map[string]string{}
+	for i, id := range d.IDs {
+		if i < len(d.Whole) {
+			out[id] = d.Whole[i]
+		}
+	}
+	return out
+}
+
 // askUnrelated asks the decision model of each line (by id, in order) and
 // returns P(unrelated) by id; requests of 64 go at most prepParallel at once.
 // A failed request leaves its lines unanswered; err is the first failure.
@@ -325,7 +337,7 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 		// the rest of the wide list apart: asked within the wide list, 8 of
 		// 193 basic lines fell on the other side of 0.5, while the same
 		// request asked twice moved 1 (11-08); the measured GXW asked so.
-		lines := deliveryLines(wide)
+		lines := wholeLines(wide)
 		inBasic := map[string]bool{}
 		for _, id := range basic.IDs {
 			inBasic[id] = true
@@ -336,7 +348,7 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 				rest = append(rest, id)
 			}
 		}
-		for id, l := range deliveryLines(basic) {
+		for id, l := range wholeLines(basic) {
 			if lines[id] == "" {
 				lines[id] = l
 			}
@@ -399,7 +411,7 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 			go func() {
 				defer wg.Done()
 				var r store.PreprocessRecord
-				p0, decErr = askUnrelated(ctx, p.decider, decState, basic.IDs, lines, &r)
+				p0, decErr = askUnrelated(ctx, p.decider, decState, basic.IDs, wholeLines(basic), &r)
 				rec.Asked, rec.DecisionCalls, rec.DecisionRejected, rec.InputTokens = r.Asked, r.DecisionCalls, r.DecisionRejected, r.InputTokens
 			}()
 		} else {

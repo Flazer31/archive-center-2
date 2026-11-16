@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"archivecenter2/goservice/internal/memory"
 	"archivecenter2/goservice/internal/observe"
 	"archivecenter2/goservice/internal/provider"
 	"archivecenter2/goservice/internal/store"
@@ -506,6 +507,41 @@ func TestGuideItemsKeepsListedFields(t *testing.T) {
 		}
 		if got != c.err || len(items["connections"]) != c.want {
 			t.Errorf("%s: %d items, error %q; want %d, %q", c.name, len(items["connections"]), got, c.want, c.err)
+		}
+	}
+}
+
+// The publisher's two calls read only the last publisherTurns turns of the
+// request's window (1.2: on the saved 21 scenes the conversation was 90% of
+// the guide prompt; two turns cut its tokens 48% with no more severe
+// problems in a blind judgment), whatever the window holds.
+func TestNarrativeReadsLastTwoTurns(t *testing.T) {
+	f := newNarrFake(t)
+	f.guide = `{"connections":[]}`
+	f.input = `{"unchanged":true}`
+	ai, err := provider.New(provider.Config{Provider: "custom", Model: "test", URL: f.srv.URL + "/v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scope []memory.ScopedTurn
+	for i := 1; i <= 5; i++ {
+		scope = append(scope, memory.ScopedTurn{Source: memory.Source{Turn: i,
+			Members:   []memory.SourceMember{{Key: fmt.Sprint("u", i), Data: fmt.Sprintf("입력 턴%d", i)}},
+			Responses: []memory.SourceResponse{{Key: fmt.Sprint("a", i), Data: fmt.Sprintf("응답 턴%d", i)}}}})
+	}
+	scope = append(scope, memory.ScopedTurn{Source: memory.Source{Turn: 6, Members: []memory.SourceMember{{Key: "u6", Data: "지금 입력"}}}})
+	n := &narrDeps{ai: ai, s: store.NarrativeSettings{Level: store.GuideMid, Chars: store.DefaultGuideChars, Input: store.InputClarify}}
+	narrative(context.Background(), n, store.Delivery{Window: 5}, scope, "지금 입력", time.Now())
+	prompts := f.take()
+	if len(prompts) != 2 {
+		t.Fatalf("want the guide and the input call, got %d", len(prompts))
+	}
+	for _, p := range prompts {
+		for i := 1; i <= 5; i++ {
+			in := strings.Contains(p, fmt.Sprintf("응답 턴%d", i))
+			if want := i > 5-publisherTurns; in != want {
+				t.Fatalf("turn %d in the publisher prompt = %v, want %v: %.120q", i, in, want, p)
+			}
 		}
 	}
 }

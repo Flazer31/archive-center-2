@@ -21,7 +21,7 @@ func TestParseTakesTheFinalObjectAfterThinking(t *testing.T) {
 // A cut-off response keeps the complete items and notes the loss; nothing
 // is filled in.
 func TestParseSalvagesCompleteItemsOnly(t *testing.T) {
-	raw := `{"entities":[{"id":"n1","name":"한얼"}],"memories":[{"id":"m1","kind":"event","body":"갚았다"},{"id":"m2","kind":"fact","bo`
+	raw := `{"entities":[{"id":"n1","name":"서준"}],"memories":[{"id":"m1","kind":"event","body":"갚았다"},{"id":"m2","kind":"fact","bo`
 	out, notes := Parse(raw)
 	if len(out.Entities) != 1 || len(out.Memories) != 1 || out.Memories[0].Body != "갚았다" {
 		t.Fatalf("out %+v", out)
@@ -48,7 +48,7 @@ func TestParseIgnoresItemAfterTheObject(t *testing.T) {
 
 func sampleKnown() Known {
 	return Known{
-		Names:     []KnownName{{ID: "N1", Name: "강한얼", Type: "person"}, {ID: "N2", Name: "민재"}, {ID: "N3", Name: "서진"}},
+		Names:     []KnownName{{ID: "N1", Name: "한서준", Type: "person"}, {ID: "N2", Name: "민재"}, {ID: "N3", Name: "서진"}},
 		Relations: []KnownRelation{{ID: "R1", Name: "N2", SameAs: "N1", How: "disguise"}},
 		Memories: []KnownMemory{
 			{ID: "M1", Turn: 1, Memory: Memory{Kind: "event", Body: "갚음", Roles: &Roles{Actor: []string{"N1"}}, Effects: []Effect{{About: "N1", Slot: "돈", Before: "50", Value: "20"}}}},
@@ -89,15 +89,15 @@ func TestSelectFollowsNamesAndRelations(t *testing.T) {
 // Events and views of the open scene are shown; outside it they are shown
 // only when the turn recalls them.
 func TestSelectScene(t *testing.T) {
-	k := Known{Names: []KnownName{{ID: "N1", Name: "한얼"}}, Memories: []KnownMemory{
+	k := Known{Names: []KnownName{{ID: "N1", Name: "서준"}}, Memories: []KnownMemory{
 		{ID: "M1", Turn: 1, Memory: Memory{Kind: "event", Body: "장터 구경", Roles: &Roles{Actor: []string{"N1"}}}},
 		{ID: "M2", Turn: 1, Memory: Memory{Kind: "view", Owner: "N1", Aspect: "emotion", Body: "들뜸"}},
 		{ID: "M3", Turn: 1, Memory: Memory{Kind: "view", Owner: "N1", Aspect: "goal", Body: "과거 급제"}},
 		{ID: "M4", Turn: 2, Memory: Memory{Kind: "event", Body: "주막에 들어감", Roles: &Roles{Actor: []string{"N1"}}}},
 		{ID: "M5", Turn: 2, Memory: Memory{Kind: "view", Owner: "N1", Aspect: "emotion", Body: "피곤함"}},
 	}, Scenes: []KnownScene{{ID: "S1", Change: "open", Turn: 1}, {ID: "S1", Change: "close", Turn: 2}, {ID: "S2", Change: "open", Turn: 2}}}
-	sel := Select(k, "한얼이 앉았다", nil)
-	if r := Select(k, "한얼은 과거 급제를 떠올렸다", nil); len(r.Memories) != 3 || r.Memories[0].ID != "M3" {
+	sel := Select(k, "서준이 앉았다", nil)
+	if r := Select(k, "서준은 과거 급제를 떠올렸다", nil); len(r.Memories) != 3 || r.Memories[0].ID != "M3" {
 		t.Fatalf("recalled goal: %+v", r.Memories)
 	}
 	var got []string
@@ -112,7 +112,7 @@ func TestSelectScene(t *testing.T) {
 func TestRenderMarksEarlierValuesAndEffects(t *testing.T) {
 	k := sampleKnown()
 	// the turn recalls the earlier value and the event
-	out := RenderKnown(Select(k, "강한얼이 20냥을 갚음", nil), Superseded(k))
+	out := RenderKnown(Select(k, "한서준이 20냥을 갚음", nil), Superseded(k))
 	if !strings.Contains(out, "[M2] T1 fact about N1 slot \"돈\": 20냥 | at M1 | earlier value") || strings.Contains(out, "[M3] T2 fact about N1 slot \"돈\": 10냥 | was M2 | earlier") {
 		t.Fatalf("render:\n%s", out)
 	}
@@ -243,7 +243,7 @@ func TestSalvageReadsTheLinkAfterABrokenOne(t *testing.T) {
 // each other do not hang the reading.
 func TestSelectFollowsTheRecordAnEffectChanges(t *testing.T) {
 	k := Known{
-		Names: []KnownName{{ID: "N1", Name: "한얼"}, {ID: "N2", Name: "주모"}},
+		Names: []KnownName{{ID: "N1", Name: "서준"}, {ID: "N2", Name: "주모"}},
 		Memories: []KnownMemory{
 			{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", About: "N1", Slot: "소지금", Body: "15냥이 있다"}},
 			{ID: "M2", Turn: 2, Memory: Memory{Kind: "event", Body: "빌렸다", Effects: []Effect{{About: "M1", Slot: "소지금", Before: "15냥", Value: "65냥", Was: Refs{"M1"}}}}},
@@ -252,7 +252,7 @@ func TestSelectFollowsTheRecordAnEffectChanges(t *testing.T) {
 			{ID: "M5", Turn: 3, Memory: Memory{Kind: "event", Body: "고리 둘", Effects: []Effect{{About: "M4", Value: "x"}}}},
 		},
 	}
-	sel := Select(k, "한얼은 길을 걸었다", nil)
+	sel := Select(k, "서준은 길을 걸었다", nil)
 	var refs []string
 	for _, e := range sel.Effects {
 		refs = append(refs, e.Ref)
@@ -262,7 +262,7 @@ func TestSelectFollowsTheRecordAnEffectChanges(t *testing.T) {
 	}
 	// the model reads whose value it is, and that person's name
 	known := RenderKnown(sel, Superseded(k))
-	if !strings.Contains(known, "[M3.1] T3 effect M2.1 (of N1)") || !strings.Contains(known, "[N1] 한얼") {
+	if !strings.Contains(known, "[M3.1] T3 effect M2.1 (of N1)") || !strings.Contains(known, "[N1] 서준") {
 		t.Fatalf("rendered:\n%s", known)
 	}
 	if sel = Select(k, "주모가 웃었다", nil); len(sel.Effects) != 0 {
@@ -270,7 +270,7 @@ func TestSelectFollowsTheRecordAnEffectChanges(t *testing.T) {
 	}
 	// a later record that replaces the whole event replaces its effects
 	k.Memories = append(k.Memories, KnownMemory{ID: "M6", Turn: 4, Memory: Memory{Kind: "fact", About: "N1", Slot: "소지금", Body: "61냥이 있다", Was: Refs{"M3"}}})
-	sel = Select(k, "한얼은 길을 걸었다", nil)
+	sel = Select(k, "서준은 길을 걸었다", nil)
 	if len(sel.Effects) != 0 || !Superseded(k)["M3.1"] {
 		t.Fatalf("effects of a replaced event: %+v", sel.Effects)
 	}
@@ -281,7 +281,7 @@ func TestSelectFollowsTheRecordAnEffectChanges(t *testing.T) {
 // to each other end at the first one passed again.
 func TestEffectSubjectChains(t *testing.T) {
 	k := Known{
-		Names: []KnownName{{ID: "N1", Name: "한얼"}, {ID: "N2", Name: "박도준"}},
+		Names: []KnownName{{ID: "N1", Name: "서준"}, {ID: "N2", Name: "박도준"}},
 		Memories: []KnownMemory{
 			{ID: "M1", Turn: 1, Memory: Memory{Kind: "event", Body: "세 번 바뀜", Effects: []Effect{
 				{About: "N1", Slot: "돈", Value: "1냥"}, {About: "M1.1", Value: "2냥"}, {About: "M1.2", Value: "3냥"}}}},
@@ -293,7 +293,7 @@ func TestEffectSubjectChains(t *testing.T) {
 		},
 	}
 	got := map[string]string{}
-	for _, e := range Select(k, "한얼은 걸었다", nil).Effects {
+	for _, e := range Select(k, "서준은 걸었다", nil).Effects {
 		got[e.Ref] = e.Subject
 	}
 	if got["M1.3"] != "N1" || got["M3.1"] != "N1" {

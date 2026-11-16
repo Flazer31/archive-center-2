@@ -112,6 +112,20 @@ type Delivery struct {
 	// (a record's own line breaks kept): what a preprocessing mode shows a
 	// model for each record.
 	Lines []string `json:"-"`
+	// Whole are the same lines before a shared basis is cut out of them: a
+	// record whose body another line quotes keeps its own body here
+	// ("event [text B1]" in Lines is the whole event). The decision model is
+	// asked of one line at a time from Whole; asked of the stub, it called a
+	// needed secret event unrelated in every run (S-026 M6, 0.72-0.81; 0.24
+	// asked whole, 11-16). A view pointing to a mark another view defined
+	// shows "based on B1" in both.
+	Whole []string `json:"-"`
+	// Names are the name relation lines (an alias, a true name) whose name
+	// the scene uses, in the room the records left and shown first, counted
+	// in Chars (1.2 #6); SecretNames those kept from someone, counted in
+	// SecretChars. Not records, so not in IDs or Lines.
+	Names       []string `json:"-"`
+	SecretNames []string `json:"-"`
 	// Preprocess is what a preprocessing mode did for this delivery (set by
 	// the request handler; the HUD shows it)
 	Preprocess *PreprocessRecord `json:"-"`
@@ -133,6 +147,10 @@ type TraceRow struct {
 	// contrast_removed, not_chosen (a preprocessing mode left it out)
 	Result string `json:"result"`
 	Hold   string `json:"hold,omitempty"` // C18 pin: taken first, unranked
+	// Why: the reason a record is in the general lane (Why* in
+	// deliver_general.go), or "secret" for the secret lane's single rank;
+	// empty for a pinned record and for a delivery without the general lane
+	Why string `json:"why,omitempty"`
 	// preprocessing (E01~E03), when asked: the decision model's probability
 	// that the record is unrelated to the scene, and the AI's answer
 	Unrelated   *float64 `json:"unrelated,omitempty"`
@@ -201,6 +219,7 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	}
 	sel := memory.Select(k, text, earlier)
 	sup := memory.Superseded(k)
+	kept := memory.KeptEvents(k)
 	// a fact later records changed in part is delivered with the slots
 	// they changed, so its earlier values of those are not read as current:
 	// Select sets them on what it selects; the pinned and completing records
@@ -237,10 +256,8 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	}
 	sort.SliceStable(pinned, func(a, b int) bool { return pinned[a].pos > pinned[b].pos }) // the latest first
 	out.Candidates = len(cands) + len(pinned)
-	if len(cands) == 0 && len(pinned) == 0 {
-		bodyOnly(&out, req.Body) // no record to deliver; the body section still goes
-		return out, nil
-	}
+	// (no early return when Select found nothing: the general lane's
+	// anchors may still reach records, 1.2)
 	// Facts missing from Select are completion candidates, not new roots.
 	// Keep the original ranking population so finding more such facts cannot
 	// change the relative order of existing candidates.
@@ -352,7 +369,6 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	sort.SliceStable(order, func(a, b int) bool { return rank[order[a].id] < rank[order[b].id] })
 	order = enteringFirst(order, k, scope[cut:n], req.Input, parent)
 	order = append(pinned, order...)
-
 	aware := map[string][]memory.KnownAwareness{}
 	secret := map[string]bool{}
 	for _, a := range k.Awareness {
@@ -422,17 +438,146 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 		}
 		return own, isSecret
 	}
+	// 1.2: the general lane takes generalOrder (deliver_general.go); the
+	// secret lane keeps the single rank. Both read whether a line is a
+	// secret with take's own rule below (secretAsShown), so a record is
+	// never placed in one lane and shown in the other.
+	singleRank := order
+	// secretAsShown is take's rule for a record counted in the secret lane:
+	// its own records' awareness, the record its basis points to, or the
+	// event it completes (a completing fact, as when that event is not
+	// delivered). A record only recorded at a secret event is not a secret
+	// itself: it is shown with that protection but counted in the general
+	// lane (take below).
+	secretAsShown := func(m *memory.KnownMemory, completes string) bool {
+		_, s := protect(carried[m.ID], nil, false)
+		if completes != "" {
+			_, s = protect(carried[completes], nil, s)
+		}
+		if bs := m.Basis; bs != nil && bodies[bs.Ref] != "" {
+			_, s = protect(carried[bs.Ref], nil, s)
+			_, s = protectAt(strings.SplitN(bs.Ref, ".", 2)[0], nil, s)
+		}
+		return s
+	}
+	selected := make(map[string]bool, len(cands))
+	for _, c := range cands {
+		selected[c.id] = true
+	}
+	current := make(map[string]bool, len(facts))
+	for i := range facts {
+		current[facts[i].ID] = true
+	}
+	general, lanes, generalWhy, generalSim, generalSum, anchors, err := generalOrder(k, place, scope, cut, n, req.Input, sup, holds, selected, current,
+		func(m *memory.KnownMemory) bool { return secretAsShown(m, "") },
+		func(ids []string) (map[string]float64, []float64, int, error) {
+			if len(req.Query) == 0 {
+				return map[string]float64{}, nil, 0, nil
+			}
+			return d.similaritiesWithSum(req.Model, req.Query, ids)
+		})
+	if err != nil {
+		return out, err
+	}
+	isPinned := map[string]bool{}
+	for _, c := range pinned {
+		isPinned[c.id] = true
+	}
+	// A general event brings, right after it, the current facts recorded at
+	// it that the general order does not hold (as the single rank does for
+	// its events); one shown as a secret stays with the secret lane.
+	inGeneral := map[string]bool{}
+	generalEvent := map[string]bool{}
+	for _, c := range general {
+		inGeneral[c.id] = true
+		if c.mem.Kind == "event" {
+			generalEvent[c.id] = true
+		}
+	}
+	completes := map[string][]candidate{}
+	for i := range facts {
+		m := &facts[i]
+		at := strings.SplitN(m.At, ".", 2)[0]
+		if !generalEvent[at] || inGeneral[m.ID] || isPinned[m.ID] || holds[m.ID] != "" || place[m.Job] >= cut || secretAsShown(m, at) {
+			continue
+		}
+		completes[at] = append(completes[at], candidate{id: m.ID, pos: place[m.Job], mem: m})
+	}
+	placed := map[string]bool{}
+	order = append([]candidate(nil), pinned...)
+	for i, c := range general {
+		if isPinned[c.id] {
+			continue
+		}
+		order = append(order, c)
+		placed[c.id] = true
+		delete(parent, c.id) // an independent general record completes nothing
+		rank[c.id] = lanes[c.id]*10000 + i
+		if _, ok := sim[c.id]; !ok {
+			if v, ok := generalSim[c.id]; ok {
+				sim[c.id] = v
+			}
+		}
+		if c.mem.Kind != "event" {
+			continue
+		}
+		for _, f := range completes[c.id] {
+			if placed[f.id] {
+				continue
+			}
+			order = append(order, f)
+			placed[f.id] = true
+			parent[f.id] = c.id
+			rank[f.id] = rank[c.id]
+			generalWhy[f.id] = WhyWithEvent
+		}
+	}
+	// then the secret lane's records in the single rank (after the general
+	// ones, so a completing secret fact comes after a general event it
+	// completes, and a basis source delivered in the general lane is defined
+	// once, on its own line)
+	for _, c := range singleRank {
+		if !isPinned[c.id] && !placed[c.id] && secretAsShown(c.mem, parent[c.id]) {
+			order = append(order, c)
+			if generalWhy == nil {
+				generalWhy = map[string]string{}
+			}
+			generalWhy[c.id] = WhySecret
+		}
+	}
+	if len(order) == 0 {
+		bodyOnly(&out, req.Body) // no record to deliver; the body section still goes
+		return out, nil
+	}
+
+	// a secret view whose basis is a record already shown on a general line
+	// refers to that line's text (1.2): the definition goes on the source
+	// line, its few added chars counted in the general lane, instead of the
+	// whole text quoted again on the secret line
+	generalShown := map[string]bool{}
+	sourceDef := map[string]string{}
+	// the records counted in the secret lane (a line shown as a secret may
+	// be counted in the general lane: a record only recorded at a secret)
+	secretCounted := map[string]bool{}
 	take := func(c candidate) bool {
 		// a line carries the awareness of every record whose text it shows
 		// (its own effects, the record its basis points to), and is a
 		// secret when one of them is
 		own, isSecret := protect(carried[c.id], nil, false)
+		inherited := false
 		if at := alone[c.id]; at != "" {
 			own, isSecret = protect(carried[at], own, isSecret)
 		} else if holds[c.id] == HoldPin {
 			own, isSecret = protectAt(c.id, own, isSecret)
+		} else if parent[c.id] == "" {
+			// an independent record shown away from the record it was
+			// recorded at keeps that protection (1.2: an independent fact
+			// recorded at a secret event was shown without it). It is shown
+			// as a secret but counted in the general lane, where it was
+			// chosen: it is not a secret itself.
+			own, inherited = protectAt(c.id, own, false)
 		}
-		basis, newMark := "", ""
+		basis, newMark, sourceAdded := "", "", 0
 		if bs := c.mem.Basis; bs != nil && bodies[bs.Ref] != "" {
 			own, isSecret = protect(carried[bs.Ref], own, isSecret)
 			own, isSecret = protectAt(strings.SplitN(bs.Ref, ".", 2)[0], own, isSecret)
@@ -441,12 +586,33 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			} else {
 				newMark = "B" + strconv.Itoa(len(marks)+1)
 				basis = "based on " + newMark + " \"" + bodies[bs.Ref] + "\""
+				if (isSecret || inherited) && generalShown[bs.Ref] {
+					if added := len([]rune("[text " + newMark + "=\"\"]")); out.Chars+added <= req.Chars {
+						basis, sourceAdded = "based on "+newMark, added
+					}
+				}
 			}
 		}
-		line := deliveryLine(*c.mem, names, basis, own)
-		full := memory.RenderKnown(memory.Selection{Memories: []memory.KnownMemory{*c.mem}, Awareness: own}, sup)
-		size := recordSize(full, line)
-		lastSize, lastSecret = size, isSecret
+		own = distinctAwareness(own)
+		shown := currentValues(*c.mem, kept, sup)
+		line := deliveryLine(shown, names, basis, own)
+		full := memory.RenderKnown(memory.Selection{Memories: []memory.KnownMemory{shown}, Awareness: own}, sup)
+		size := lineSize(line) // the general lane counts the line sent
+		if isSecret {
+			size = recordSize(full, line)
+		}
+		if !isSecret && sourceAdded > 0 && out.Chars+size+sourceAdded > req.Chars {
+			// the line and the chars it adds to its source line are counted
+			// together in the general lane; when both do not fit, the basis
+			// is quoted on this line as before
+			basis = "based on " + newMark + " \"" + bodies[c.mem.Basis.Ref] + "\""
+			sourceAdded = 0
+			line = deliveryLine(shown, names, basis, own)
+			full = memory.RenderKnown(memory.Selection{Memories: []memory.KnownMemory{shown}, Awareness: own}, sup)
+			size = lineSize(line)
+		}
+		shownSecret := isSecret || inherited
+		lastSize, lastSecret = size, shownSecret
 		if isSecret {
 			if out.SecretChars+size > req.Secret {
 				return false
@@ -461,10 +627,20 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 		if newMark != "" {
 			marks[c.mem.Basis.Ref] = newMark
 		}
-		lines = append(lines, line)
-		rendered = append(rendered, renderedRecord{c.mem, basis, own})
-		out.IDs = append(out.IDs, c.id)
+		if sourceAdded > 0 {
+			sourceDef[c.mem.Basis.Ref] = newMark
+			out.Chars += sourceAdded
+		}
+		if !shownSecret {
+			generalShown[c.id] = true
+		}
 		if isSecret {
+			secretCounted[c.id] = true
+		}
+		lines = append(lines, line)
+		rendered = append(rendered, renderedRecord{&shown, basis, own})
+		out.IDs = append(out.IDs, c.id)
+		if shownSecret {
 			if out.SecretIDs == nil {
 				out.SecretIDs = map[string]bool{}
 			}
@@ -475,6 +651,9 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	delivered, notChosen := map[string]bool{}, map[string]bool{}
 	for _, c := range order {
 		row := TraceRow{ID: c.id, Turn: c.mem.Turn, Kind: c.mem.Kind, Rank: rank[c.id], Parent: parent[c.id], Hold: holds[c.id]}
+		if !isPinned[c.id] {
+			row.Why = generalWhy[c.id]
+		}
 		if v, ok := sim[c.id]; ok {
 			row.Sim = &v
 		}
@@ -511,11 +690,55 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	// (1.1 B2): centered on the whole chat, right
 	// after the recent window its memories pulled the mean toward the scene
 	// and every baseline pick scored <=0, so the request got no memory.
-	pool := memory.Known{Memories: make([]memory.KnownMemory, 0, len(order))}
-	for _, c := range order {
+	// The single rank's records keep a contrast centered on that rank's
+	// population (1.2: the secret lane chooses as before); records only the
+	// general order reached take theirs from the delivered order's population.
+	pool := memory.Known{Memories: make([]memory.KnownMemory, 0, len(singleRank))}
+	for _, c := range singleRank {
 		pool.Memories = append(pool.Memories, *c.mem)
 	}
 	contrast, err := d.sceneContrast(pool, req)
+	if err == nil && len(contrast) > 0 && len(order) > 1 && len(generalSum.sum) == len(req.Query) {
+		// the delivered order's center: the general records' unit vectors
+		// were summed when their similarities were read; the rest of the
+		// order (pinned, completing facts, the secret lane) is read here
+		inPool, inRank := map[string]bool{}, map[string]bool{}
+		for _, c := range general {
+			inPool[c.id] = true
+		}
+		for _, c := range singleRank {
+			inRank[c.id] = true
+		}
+		var rest, scored []string
+		for _, c := range order {
+			if !inPool[c.id] {
+				rest = append(rest, c.id)
+			}
+			if !inRank[c.id] {
+				scored = append(scored, c.id)
+			}
+		}
+		sum, count := append([]float64(nil), generalSum.sum...), generalSum.count
+		moreErr := d.unitVectors(req.Model, len(req.Query), rest, func(_ string, v []float64) {
+			count++
+			for i := range sum {
+				sum[i] += v[i]
+			}
+		})
+		var more map[string]float64
+		if moreErr == nil {
+			more, moreErr = d.contrastAgainst(req, sum, count, scored)
+		}
+		if moreErr != nil {
+			log.Printf("scene contrast of the general order skipped: %v", moreErr)
+		} else {
+			for id, v := range more {
+				if _, ok := contrast[id]; !ok {
+					contrast[id] = v
+				}
+			}
+		}
+	}
 	if err != nil {
 		log.Printf("scene contrast skipped: %v", err)
 		contrast = nil // Discard partial scores and render the frozen baseline.
@@ -524,6 +747,7 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 		originalRendered, originalIDs := rendered, out.IDs
 		lines, rendered, out.IDs = nil, nil, nil
 		marks, out.SecretIDs = map[string]string{}, nil
+		generalShown, sourceDef, secretCounted = map[string]bool{}, map[string]string{}, map[string]bool{}
 		out.Chars, out.SecretChars = 0, 0
 		results := map[string]string{}
 		traceIndex := map[string]int{}
@@ -561,8 +785,26 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			}
 		}
 	}
-	shareDeliveryBasis(lines, out.IDs, rendered, marks, names)
+	out.Whole = append([]string(nil), lines...)
+	shareDeliveryBasis(lines, out.IDs, rendered, marks, names, secretCounted, sourceDef)
 	out.Lines = append([]string(nil), lines...)
+	// the name relations whose name the scene uses take the room the
+	// records left in their lane (they never push a record out: measured
+	// 11-15, put first they pushed out L-140's needed old memory); shown
+	// first in the text
+	generalNames, secretNames := aliasLines(k, anchors, aware, secret)
+	for _, l := range generalNames {
+		if size := len([]rune(l)) + 1; out.Chars+size <= req.Chars {
+			out.Names = append(out.Names, l)
+			out.Chars += size
+		}
+	}
+	for _, l := range secretNames {
+		if size := len([]rune(l)) + 1; out.SecretChars+size <= req.Secret {
+			out.SecretNames = append(out.SecretNames, l)
+			out.SecretChars += size
+		}
+	}
 	var bodyLines []string
 	if len(req.Body) > 0 {
 		bodyLines = append([]string{body.Header}, req.Body...)
@@ -570,14 +812,14 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			out.BodyChars += len([]rune(l)) + 1
 		}
 	}
-	if all := append(append([]string(nil), lines...), bodyLines...); len(all) > 0 {
+	if all := append(append(append(append([]string(nil), out.Names...), out.SecretNames...), lines...), bodyLines...); len(all) > 0 {
 		body := strings.Join(all, "\n") + "\n"
 		out.Block = BlockTitle + textPrint(body).H + "]\n" + body
 		out.BlockChars = len([]rune(out.Block))
 		// Split the already selected, rendered lines verbatim. Basis marks
 		// resolve across the PDF and retained text together; neither lane
 		// repeats definitions or spends additional memory budget.
-		lanes := [2][]string{}
+		lanes := [2][]string{append([]string(nil), out.Names...), append([]string(nil), out.SecretNames...)}
 		for i, id := range out.IDs {
 			lane := 0
 			if out.SecretIDs[id] {
@@ -593,9 +835,10 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 
 // Selection is finished. Share only a whole record's exact body, preserving
 // every record and qualifier without refilling the saved space. If its source
-// precedes the defining view, move that same quotation into the source marker.
+// precedes the defining view in the same lane, move that same quotation into
+// the source marker.
 // Effect references remain distinct from whole-record IDs.
-func shareDeliveryBasis(lines []string, ids []string, rendered []renderedRecord, marks, names map[string]string) {
+func shareDeliveryBasis(lines []string, ids []string, rendered []renderedRecord, marks, names map[string]string, secret map[string]bool, sourceDef map[string]string) {
 	definitions := map[string]int{}
 	for i, r := range rendered {
 		if bs := r.memory.Basis; bs != nil {
@@ -606,6 +849,12 @@ func shareDeliveryBasis(lines []string, ids []string, rendered []renderedRecord,
 	}
 	bodies, bases := map[int]string{}, map[int]string{}
 	for i, id := range ids {
+		if mark, ok := sourceDef[id]; ok {
+			// a secret line refers to this general line's text; the added
+			// chars were counted when that line was taken
+			bodies[i] = "[text " + mark + "=\"" + rendered[i].memory.Body + "\"]"
+			continue
+		}
 		if mark, ok := marks[id]; ok {
 			r := rendered[i]
 			m := *r.memory
@@ -613,7 +862,10 @@ func shareDeliveryBasis(lines []string, ids []string, rendered []renderedRecord,
 			line := deliveryLine(m, names, r.basis, r.aware)
 			if len([]rune(line)) < len([]rune(lines[i])) {
 				bodies[i] = m.Body
-				if j, ok := definitions[id]; ok && i < j {
+				// moved only within one counted lane: each lane's counted
+				// chars stay those of its lines (1.2: the general lane counts
+				// the line)
+				if j, ok := definitions[id]; ok && i < j && secret[ids[i]] == secret[ids[j]] {
 					bodies[i] = "[text " + mark + "=\"" + r.memory.Body + "\"]"
 					bases[j] = "based on " + mark
 				}
@@ -659,10 +911,35 @@ func deliveryBlock(lines []string) string {
 	return BlockTitle + textPrint(body).H + "]\n" + body
 }
 
-// recordSize is what a candidate counts against its ceiling. The ceilings
-// were measured in the full record format (ids and fields, 2026-10-25);
-// the line sent (and its line break) is counted when it is longer, so the
-// delivered lines never pass the ceiling.
+// distinctAwareness keeps each awareness a line shows once: the same
+// protection reaches a line along several records (its basis and the record
+// it was recorded at often carry the same awareness), and showing it twice
+// only lengthens the line.
+func distinctAwareness(own []memory.KnownAwareness) []memory.KnownAwareness {
+	type shownAs struct{ kind, who, via, from, extent, part string }
+	seen := map[shownAs]bool{}
+	out := own[:0:0]
+	for _, a := range own {
+		k := shownAs{a.Kind, a.Who, a.Via, a.From, a.Extent, a.Part}
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// lineSize is what a general-lane candidate counts against its ceiling
+// (1.2): the line sent and its line break.
+func lineSize(line string) int {
+	return len([]rune(line)) + 1
+}
+
+// recordSize is what a secret-lane candidate counts against its ceiling
+// (the general lane counts the line sent, 1.2). The ceilings were measured
+// in the full record format (ids and fields, 2026-10-25); the line sent
+// (and its line break) is counted when it is longer, so the delivered lines
+// never pass the ceiling.
 func recordSize(full, line string) int {
 	return max(len([]rune(full)), len([]rune(line))+1)
 }
@@ -944,6 +1221,30 @@ func textPrint(s string) TextPrint {
 // holds a view (basis and the record it rests on, feeling, whether it
 // differs from the facts), who
 // knows, does not know, must not be told or may be told.
+// currentValues drops from an event a fact or view named by was (kept, 11-14)
+// the values later records replaced: the delivered line shows what happened
+// without an earlier value read as the current one. Other events keep their
+// lines as they were (dropping their replaced values everywhere shortened
+// lines enough to change which records fit: needed memories 13 -> 11 of 39
+// on the 21 stored scenes). The line still carries the awareness of the
+// values it leaves out: records recorded at those values rely on it for
+// their protection (Sol r5).
+func currentValues(m memory.KnownMemory, kept, sup map[string]bool) memory.KnownMemory {
+	if !kept[m.ID] {
+		return m
+	}
+	var keep []memory.Effect
+	for i, e := range m.Effects {
+		if !sup[m.ID+"."+strconv.Itoa(i+1)] {
+			keep = append(keep, e)
+		}
+	}
+	if len(keep) < len(m.Effects) {
+		m.Effects = keep
+	}
+	return m
+}
+
 func deliveryLine(m memory.KnownMemory, names map[string]string, basis string, aware []memory.KnownAwareness) string {
 	name := func(id string) string {
 		if n, ok := names[id]; ok {

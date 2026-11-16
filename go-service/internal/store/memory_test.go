@@ -13,8 +13,8 @@ import (
 
 func twoTurnSession() *lifecycle.Session {
 	s := lifecycle.NewSession("chat:M")
-	s.Apply(lsnap(lifecycle.SourceOutputEvent, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "한얼은 30냥을 갚았다")))
-	s.Apply(lsnap(lifecycle.SourceOutputEvent, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "한얼은 30냥을 갚았다"),
+	s.Apply(lsnap(lifecycle.SourceOutputEvent, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "서준은 30냥을 갚았다")))
+	s.Apply(lsnap(lifecycle.SourceOutputEvent, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "서준은 30냥을 갚았다"),
 		lrow("u2", "user", "", "다음"), lrow("a2", "char", "g2", "서진은 그 일을 몰랐다")))
 	return s
 }
@@ -42,10 +42,10 @@ func parse(t *testing.T, s string) memory.Output {
 }
 
 const turn1Output = `{
- "entities":[{"id":"n1","name":"강한얼","type":"person","q":"한얼은"},
+ "entities":[{"id":"n1","name":"한서준","type":"person","q":"서준은"},
              {"id":"n2","name":"민재","type":"person","q":"민재","same_as":"n1","how":"disguise","relation":"r1","unaware":["서진"]}],
  "memories":[
-  {"id":"m1","kind":"event","body":"한얼이 빚 30냥을 갚았다","q":"30냥을 갚았다","imp":0,
+  {"id":"m1","kind":"event","body":"서준이 빚 30냥을 갚았다","q":"30냥을 갚았다","imp":0,
    "roles":{"actor":["n1"]},"effects":[{"about":"n1","slot":"돈","before":"50냥","value":"20냥","delta":"-30"}],"outcome":"success"},
   {"id":"m2","kind":"fact","about":"n1","slot":"돈","mode":"상태","body":"20냥","q":"30냥을 갚았다","at":"m1","was":"m1.1"},
   {"id":"m3","kind":"view","owner":"n1","about":"m1","aspect":"emotion","body":"후련함","basis":{"via":"내면 서술","ref":"m1"},
@@ -155,8 +155,8 @@ func TestRerollMakesEarlierJobHistory(t *testing.T) {
 		t.Fatalf("current jobs %v", got)
 	}
 	// reroll turn 2
-	s.Apply(lsnap(lifecycle.SourceBeforeRequest, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "한얼은 30냥을 갚았다"), lrow("u2", "user", "", "다음")))
-	s.Apply(lsnap(lifecycle.SourceOutputEvent, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "한얼은 30냥을 갚았다"),
+	s.Apply(lsnap(lifecycle.SourceBeforeRequest, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "서준은 30냥을 갚았다"), lrow("u2", "user", "", "다음")))
+	s.Apply(lsnap(lifecycle.SourceOutputEvent, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "서준은 30냥을 갚았다"),
 		lrow("u2", "user", "", "다음"), lrow("a2b", "char", "g3", "서진이 알아챘다")))
 	got := cur()
 	if len(got) != 1 || got[0] != j1.ID {
@@ -215,8 +215,8 @@ func TestRefAwarenessUpdatesScopeWithoutCopy(t *testing.T) {
 		t.Fatalf("mentions: plain %d, awareness-only ref recorded as mention %d", plain, scoped)
 	}
 	// reroll turn 2: its awareness leaves current reads, turn 1's stays
-	s.Apply(lsnap(lifecycle.SourceBeforeRequest, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "한얼은 30냥을 갚았다"), lrow("u2", "user", "", "다음")))
-	s.Apply(lsnap(lifecycle.SourceOutputEvent, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "한얼은 30냥을 갚았다"),
+	s.Apply(lsnap(lifecycle.SourceBeforeRequest, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "서준은 30냥을 갚았다"), lrow("u2", "user", "", "다음")))
+	s.Apply(lsnap(lifecycle.SourceOutputEvent, lrow("u1", "user", "", "돈을 갚았다"), lrow("a1", "char", "g1", "서준은 30냥을 갚았다"),
 		lrow("u2", "user", "", "다음"), lrow("a2b", "char", "g3", "아무도 몰랐다")))
 	jobs, _ := db.CurrentJobs([]memory.Source{turnSource(s, 0), turnSource(s, 1)})
 	k, _ := db.KnownOf(jobs)

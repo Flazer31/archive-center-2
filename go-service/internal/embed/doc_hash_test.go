@@ -64,7 +64,7 @@ func (p *docHashFailingProvider) check() {
 
 func TestIndexDocHashesSurviveProviderFailure(t *testing.T) {
 	db := testDB(t)
-	job := saveTurn(t, db, `{"entities":[{"id":"n1","name":"한얼"}],"memories":[{"id":"m1","kind":"fact","about":"n1","body":"문을 잠갔다"},{"id":"m2","kind":"event","body":"주막에 갔다"},{"id":"m3","kind":"event","body":"주막에 갔다"}]}`)
+	job := saveTurn(t, db, `{"entities":[{"id":"n1","name":"서준"}],"memories":[{"id":"m1","kind":"fact","about":"n1","body":"문을 잠갔다"},{"id":"m2","kind":"event","body":"주막에 갔다"},{"id":"m3","kind":"event","body":"주막에 갔다"}]}`)
 	k, err := db.KnownOf([]int64{job})
 	if err != nil {
 		t.Fatal(err)

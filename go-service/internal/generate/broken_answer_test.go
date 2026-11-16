@@ -142,3 +142,35 @@ func TestBrokenAnswerKeepsItsDays(t *testing.T) {
 		t.Fatalf("days %v calls %d", days, m.calls())
 	}
 }
+
+// A broken answer an earlier job accepted after its one more try is not
+// reused when the reply is rewritten with markup only (1.2): the new job
+// calls the model and is stored, instead of reading the kept broken answer
+// as unreadable again and again without a call.
+func TestBrokenDoneAnswerIsNotReused(t *testing.T) {
+	const broken = `{"memories":[17]}`
+	db := testDB(t)
+	shortWaits(t, 100*time.Millisecond)
+	m := &scriptModel{replies: []string{broken, broken, goodAnswer}}
+	w := NewWorker(db, m, "fake", time.Minute)
+	s := lifecycle.NewSession("chat:A")
+	s.Apply(snap(lifecycle.SourceOutputEvent, row("u1", "user", "", "하나"), row("a1", "char", "g1", "첫째")))
+	goOn(s, row("u1", "user", "", "하나"), row("a1", "char", "g1", "첫째"))
+	run(w, s)
+	runFor(t, w)
+	src := memory.Own(s)[0].Source
+	if !waitFor(t, func() bool { j, _ := db.JobFor(src); return j.State == "done" }) || m.calls() != 2 {
+		j, _ := db.JobFor(src)
+		t.Fatalf("broken twice not stored: %+v calls %d", j, m.calls())
+	}
+	wrapped := `<span class="am-illustration">첫째</span>`
+	s.Apply(snap(lifecycle.SourceOutputEvent, row("u1", "user", "", "하나"), row("a1", "char", "g1", wrapped)))
+	goOn(s, row("u1", "user", "", "하나"), row("a1", "char", "g1", wrapped))
+	run(w, s)
+	runFor(t, w)
+	src = memory.Own(s)[0].Source
+	if !waitFor(t, func() bool { j, _ := db.JobFor(src); return j.State == "done" }) || m.calls() != 3 || len(bodies(t, db, s)[1]) != 1 {
+		j, _ := db.JobFor(src)
+		t.Fatalf("rewrite after a broken done answer: %+v calls %d bodies %v", j, m.calls(), bodies(t, db, s))
+	}
+}

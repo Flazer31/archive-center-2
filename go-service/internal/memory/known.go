@@ -91,7 +91,11 @@ type KnownEffect struct {
 //     those brought a replaced fact or its source event back in 6 of 21
 //     stored scenes);
 //   - an event named by an effect stays: the values it set for that slot are
-//     replaced (all the values it set, when none has that slot).
+//     replaced (all the values it set, when none has that slot);
+//   - an event named by was of a fact or view stays (11-14: in two re-asks
+//     of 68 stored turns every such was was a later place, clothes or
+//     state, not a change of what happened); all the values it set are
+//     replaced, as before.
 func Superseded(k Known) map[string]bool {
 	out, _ := replaced(k)
 	return out
@@ -103,6 +107,30 @@ func Superseded(k Known) map[string]bool {
 func PartlyChanged(k Known) map[string][]string {
 	_, partly := replaced(k)
 	return partly
+}
+
+// KeptEvents lists the events a fact or view named by was: they stay, and
+// all the values they set are replaced (Superseded).
+func KeptEvents(k Known) map[string]bool {
+	kind := map[string]string{}
+	for _, m := range k.Memories {
+		kind[m.ID] = m.Kind
+	}
+	out := map[string]bool{}
+	for _, m := range k.Memories {
+		for _, w := range m.Was {
+			if eventStays(kind[w], m.Kind) {
+				out[w] = true
+			}
+		}
+	}
+	return out
+}
+
+// eventStays: a record of this kind that names an event of that kind by
+// was does not replace it (11-14: a later place, clothes or state).
+func eventStays(target, by string) bool {
+	return target == "event" && by != "event"
 }
 
 func replaced(k Known) (map[string]bool, map[string][]string) {
@@ -126,6 +154,15 @@ func replaced(k Known) (map[string]bool, map[string][]string) {
 	}
 	for _, m := range k.Memories {
 		for _, w := range m.Was {
+			// a record that is not an event does not replace an event: what
+			// happened stays (a later place, clothes or state named the
+			// event by was); the values the event set are replaced
+			if t := byID[w]; t != nil && eventStays(t.Kind, m.Kind) {
+				for i := range t.Effects {
+					out[w+"."+strconv.Itoa(i+1)] = true
+				}
+				continue
+			}
 			if m.Kind == "fact" && otherSlot(byID[w], m.Slot) {
 				part(w, m.Slot)
 				continue
@@ -534,7 +571,13 @@ func selectKnown(k Known, text string, earlier []string, exclude, pin map[string
 	later := map[string]map[string]bool{}
 	for _, m := range k.Memories {
 		var replaced []string
-		replaced = append(replaced, m.Was...)
+		for _, w := range m.Was {
+			// an event a fact or view names stays (replaced): its words are
+			// not an earlier value's
+			if t, ok := byID[w]; !ok || !eventStays(t.Kind, m.Kind) {
+				replaced = append(replaced, w)
+			}
+		}
 		for _, e := range m.Effects {
 			replaced = append(replaced, e.Was...)
 		}

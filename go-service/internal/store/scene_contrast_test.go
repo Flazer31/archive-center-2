@@ -285,13 +285,17 @@ func TestContrastErrorDeliveryIsBaseline(t *testing.T) {
 }
 
 func TestContrastOversizedRetainedRowContinues(t *testing.T) {
-	// A secret view defines a long public basis. Once that view is removed,
-	// another view must quote the basis from its smaller public lane.
+	// A public fact defines a long basis a secret (retained) view refers to.
+	// Once that fact is removed, the view must quote the basis itself, no
+	// longer fits its lane, and only that row is skipped. (1.2: the general
+	// lane goes before the secret lane, so a retained row's basis can be
+	// defined on a general row; the long basis is a view the ceilings leave
+	// out.)
 	mems := []memory.Memory{
-		{Kind: "view", Owner: "N1", Body: "첫 생각", Basis: &memory.Basis{Ref: "M4"}, Awareness: memory.Awareness{HideFrom: memory.Who{"N1"}}},
-		{Kind: "view", Owner: "N1", Body: "둘째 생각", Basis: &memory.Basis{Ref: "M4"}},
+		{Kind: "fact", About: "N1", Mode: "상태", Body: "첫 생각", Basis: &memory.Basis{Ref: "M4"}},
+		{Kind: "view", Owner: "N1", Body: "둘째 생각", Basis: &memory.Basis{Ref: "M4"}, Awareness: memory.Awareness{HideFrom: memory.Who{"N1"}}},
 		{Kind: "fact", About: "N1", Mode: "상태", Body: "끝까지 전달할 기록"},
-		{Kind: "event", Body: strings.Repeat("긴 근거 ", 100)},
+		{Kind: "view", Owner: "N1", Body: strings.Repeat("긴 근거 ", 100)},
 	}
 	for i := range mems {
 		mems[i].Scene = "S1"
@@ -299,16 +303,28 @@ func TestContrastOversizedRetainedRowContinues(t *testing.T) {
 	f := &contrastFixture{memories: mems, vectors: map[int64][]float32{1: {0, 1}, 2: {1, 0}, 3: {1, 0}, 4: {0, 1}}}
 	db := fixtureDB(t, f)
 	req := syntheticRequest()
-	// Derive the lane ceiling from the exact production rendering of the
-	// shared-reference view and final fact, not a fitted budget constant.
-	view := memory.KnownMemory{ID: "M2", Turn: 1, Memory: mems[1]}
+	// Derive both ceilings from the exact production rendering, not a
+	// fitted budget constant: the general lane from the defining fact and
+	// the final fact, the secret lane from the referring view as the
+	// baseline counts it.
+	first := memory.KnownMemory{ID: "M1", Turn: 1, Memory: mems[0]}
 	fact := memory.KnownMemory{ID: "M3", Turn: 1, Memory: mems[2]}
 	charge := func(m memory.KnownMemory, basis string) int {
-		return recordSize(memory.RenderKnown(memory.Selection{Memories: []memory.KnownMemory{m}}, nil), deliveryLine(m, map[string]string{"N1": "대상"}, basis, nil))
+		return lineSize(deliveryLine(m, map[string]string{"N1": "대상"}, basis, nil)) // general lane (1.2)
 	}
-	req.Chars = charge(view, "based on B1") + charge(fact, "")
+	req.Chars = charge(first, `based on B1 "`+mems[3].Body+`"`) + charge(fact, "")
 	baselineReq := req
 	baselineReq.Query = nil
+	wide, err := db.Deliver(syntheticScope(), baselineReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range wide.Trace {
+		if r.ID == "M2" {
+			req.Secret = r.Size
+		}
+	}
+	baselineReq.Secret = req.Secret
 	baseline, err := db.Deliver(syntheticScope(), baselineReq)
 	if err != nil {
 		t.Fatal(err)

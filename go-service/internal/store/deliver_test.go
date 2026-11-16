@@ -436,6 +436,24 @@ func TestDeliverBasisShownOnce(t *testing.T) {
 			t.Fatalf("view %q dropped: %q", want, d.Block)
 		}
 	}
+	// Whole is the lines before the shared basis is cut out: the event keeps
+	// its own body there, not the mark (11-16: a decision model asked of an
+	// event shown as "[text B1]" called a needed secret unrelated)
+	if len(d.Whole) != len(d.IDs) {
+		t.Fatalf("whole lines %d for %d records", len(d.Whole), len(d.IDs))
+	}
+	marked := 0
+	for i := range d.IDs {
+		if strings.Contains(d.Lines[i], "[text B1") {
+			marked++
+			if strings.Contains(d.Whole[i], "[text B1") || !strings.Contains(d.Whole[i], "도윤이 서진의 배신을 말했다") {
+				t.Fatalf("whole line of the event: %q (shown %q)", d.Whole[i], d.Lines[i])
+			}
+		}
+	}
+	if marked != 1 {
+		t.Fatalf("expected the event to carry the mark once, got %d: %q", marked, d.Lines)
+	}
 }
 
 // lineWith is the delivered line holding text.

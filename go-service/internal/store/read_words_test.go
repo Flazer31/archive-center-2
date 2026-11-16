@@ -31,12 +31,12 @@ func TestReadWordsSavedEditedAndLegacy(t *testing.T) {
 		return k
 	}
 	k := read()
-	want, _ := json.Marshal(memory.Select(k, "한얼 30냥 후련함", nil))
+	want, _ := json.Marshal(memory.Select(k, "서준 30냥 후련함", nil))
 	if _, err := db.sql.Exec(`UPDATE memories SET read_words=NULL WHERE job_id=?`, job.ID); err != nil {
 		t.Fatal(err)
 	}
 	legacy := read()
-	got, _ := json.Marshal(memory.Select(legacy, "한얼 30냥 후련함", nil))
+	got, _ := json.Marshal(memory.Select(legacy, "서준 30냥 후련함", nil))
 	if string(got) != string(want) {
 		t.Fatal("legacy projection changed selection")
 	}

@@ -2774,6 +2774,22 @@ test("C18 the trace shows a pinned row as pinned, unranked, and one that did not
   uiNoNull(s.body);
 });
 
+test("1.2 the trace shows why a general-lane row was chosen and the rank of a secret-lane row", async () => {
+  const rows = [{ id: "M2", turn: 3, kind: "fact", rank: 30000, size: 30, result: "taken", why: "input_fact" },
+    { id: "M4", turn: 5, kind: "event", rank: 20001, size: 60, result: "taken", why: "returning" },
+    { id: "M6", turn: 1, kind: "view", rank: 4, size: 40, result: "taken", why: "secret", secret: true }];
+  const trace = () => OK({ chat: "A", delivery: { id: 7, row_total: rows.length, trace: rows, next_cursor: null } });
+  const s = uiSim([["/injection/trace", trace], ["/injection", OK({ ...GIVEN, delivery_id: 7 })]]);
+  await s.ctx.turnTab(s.body);
+  const box = uiAll(s.body).find((e) => e.tag === "details" && uiText(e).includes("고른 과정 보기"));
+  box.open = true; await box.listeners.toggle(); await tick(5);
+  const items = uiAll(box).filter((e) => e.className === "ac2-item").map(uiText);
+  assert.ok(items[0].includes("입력에 나온 대상의 현재 사실") && !items[0].includes("등수 합"), items[0]);
+  assert.ok(items[1].includes("다시 나온 대상의 지난 장면") && !items[1].includes("등수 합"), items[1]);
+  assert.ok(items[2].includes("등수 합 4") && items[2].includes("비밀"), items[2]);
+  uiNoNull(s.body);
+});
+
 test("this turn: how Go chose is read only when opened, a page at a time, with each candidate's result as stored", async () => {
   const rows = [
     { id: "M7", turn: 4, kind: "fact", rank: 3, size: 21, result: "taken" },
