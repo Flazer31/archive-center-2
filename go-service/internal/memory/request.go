@@ -21,7 +21,7 @@ Steps:
 2. For each new thing choose one kind: "event" (what happened), "fact" (what stays true), "view" (what one person thinks or feels).
 3. Do not leave out conditions, negation, who was involved, when, who told whom, and who knows or must not know.
    Look for what the text shows someone hides, does not know or is wrong about (a hidden thing or origin, a false identity, a lie or excuse told, a mistaken belief) and the reasons the text gives.
-4. Check the lists: fact mode is one of 상태, 성향, 말투, 습관, 관계, 경계, 세계 규칙, 의무, 질문·위험, 공동 목표.
+4. Check the lists: fact mode is one of 정체, 상태, 성향, 말투, 습관, 관계, 경계, 세계 규칙, 의무, 질문·위험, 공동 목표.
    view aspect is one of belief, memory, interpretation, emotion, motive, goal, intent.
 5. Think briefly. Write the JSON once, at the end.
 
@@ -41,12 +41,12 @@ Rules:
   - A request or demand the other has not accepted: a view of the asker (aspect goal), not an obligation of the one asked.
   - 경계 (fact): a limit someone sets on their own body, things or privacy, or a rule on what others may do; it holds without the other's agreement. A request to come or to do something is not a limit.
   - One person's own plan or decision: a view of that person (aspect goal or intent). A plan several people agree on: a fact (mode 공동 목표).
-- An obligation done or broken: point to it ("effects": [{"about": "<obligation id>", "status": "fulfilled"}] or a new fact with "was"). Do it once. A repeating obligation stays open after one round.
+- An obligation done or broken: write it in "closed" (below). Do it once. A repeating obligation stays open after one round.
 - Names: one entity per new name. "A의 B", "A에 있는 B", a building in a place, or a grade of a thing is not the same identity. Write location and kind as facts. Do not put quantities or states in a name.
 - Scenes: KNOWN shows the current scene. If this turn goes on in it or ends it, write {"ref": "<current scene id>", "change": "continue"} or "close". Write {"id": "s1", "change": "open"} only when a new scene starts.
 - same_as only when the text says two names are the same one (alias, disguise, true name).
-- knows / unaware / hide_from / allow_to only when the text shows who knows, who does not know, or who must not be told.
-- A secret the text shows: write the true thing once, on one item, with unaware or hide_from naming only the people the text shows not knowing it or kept from it. Do not copy it into another item.
+- Who knows, who does not know and who must not be told go in "boundaries" (below), naming only the people the text shows.
+- A secret the text shows: write the true thing once, on one item; who does not know it or is kept from it goes in "boundaries". Do not copy it into another item.
 - Something false that someone says (a lie, an excuse, a cover story): an event with speaker and listener, the body saying what was said, and "differs": "yes". A belief or view the text shows to be wrong: "differs": "yes".
 - Reasons: when the text says why someone believes, feels or decides something, write that reason in the view's body.
 - fact status: active, fulfilled, partial, missed, paused, resumed, cancelled, impossible, refused, changed (질문·위험: active, resolved, changed). expressed: 속으로만, 행동으로, 고백, 억누름.
@@ -59,11 +59,30 @@ JSON shape (all arrays optional, fields optional unless needed):
  "memories":[
   {"id":"m1","kind":"event","body":"","q":"","imp":0-10,"roles":{"actor":[],"target":[],"object":[],"place":[],"speaker":[],"listener":[]},"time":"","effects":[{"about":"","slot":"","before":"","value":"","delta":"","was":"","status":""}],"outcome":"attempt|success|partial|failed|interrupted|cancelled","setting":"","seen_by":[],"differs":"yes|no|unknown"},
   {"id":"m2","kind":"fact","about":"","slot":"","mode":"","body":"","q":"","to":"","scope":"","terms":"","status":"","at":"","was":""},
-  {"id":"m3","kind":"view","owner":"","about":"","aspect":"","body":"","q":"","basis":{"via":"경험|전언|추론|소문|기억|내면 서술","from":"","ref":"","confidence":""},"affect":{"intensity":"","persistence":"순간|남음|누적 태도"},"expressed":"","differs":"yes|no|unknown"},
+  {"id":"m3","kind":"view","owner":"","about":"","aspect":"","body":"","q":"","basis":{"via":"경험|전언|추론|소문|기억|내면 서술","from":"","ref":"","confidence":""},"affect":{"intensity":"","persistence":"순간|남음|누적 태도"},"expressed":"","differs":"yes|no|unknown","unlike":""},
   {"ref":"M12","q":""}],
  "scenes":[{"id":"s1","change":"open|continue|close","q":""}],
  "links":[{"from":"","rel":"causes|condition_of|changes|fulfills|recalls|contradicts|same_fact","to":"","q":""}]}
-Inside any item (not beside the arrays) you may also write "knows":[{"who":"","via":"직접|전언|추측","from":"","extent":"전부|부분","part":"","ref":"","q":""}], "unaware":[], "hide_from":[], "allow_to":[].`
+Inside any item (not beside the arrays) you may also write how someone came to know it, "knows":[{"who":"","via":"직접|전언|추측","from":"","extent":"전부|부분","part":"","ref":"","q":""}], and "allow_to":[].`
+
+// StructureRules follow the instructions on every generation call (1.3), an
+// edited critic prompt included, as BodyRules do: the lists of their own
+// (boundaries, closed), what stays (정체) apart from the one current state,
+// and how two people's views of one event differ. Fold reads the lists.
+const StructureRules = `
+Structure (these come after the rules above and decide where they differ):
+- 정체 (fact mode): what someone or something is and stays: true nature or species, the group or side they belong to, a title or role, a cover name or disguise and whose it is. One fact for each point. A change of state never replaces it; change it only by naming it in "was".
+- Where a place is (정체, "slot":"위치"): for each place THIS TURN shows inside or part of another place (a room in a building, a building or quarter in a town, a floor of a tomb, a village in a region) or gives its direction and distance from another place, write one fact: "about" the place, "to" the place it is in or measured from, the body saying how they are joined ("푸른 언덕 마을에서 남쪽으로 반나절 거리"). Write it once; a place that moves or is renamed is changed by naming the fact in "was". What happens at a place now (a fight, a fire, who is there) is its 상태, not this.
+- 상태 (fact mode): ONE fact for each person, place or thing, always with "slot":"지금": where they are now, what they wear or carry, their body and condition now. Write the whole current state: what the 지금 state in KNOWN shows and is still true, and what changed. Never put identity, group or names in it. Do not write "was" for the earlier 지금 state; it is replaced for you. Counted values (money, numbers) stay in effects as before.
+- "boundaries" (top-level array): one entry for each SECRET, not for each item. After writing the memories ask once: does THIS TURN show something someone hides, lies about, pretends, or does not know or is wrong about, that matters later (a true identity or nature, a disguise or false name, a cover story, a hidden plan or aim, a hidden act, a mistaken belief about these)? For each such secret that BOUNDARIES in KNOWN does not show yet, add one entry:
+  {"on":"<id of the ONE item or name that states the secret: m1, n1, M12, N3, R2>","what":"","whose":"","knows":[],"unaware":[],"hide_from":[],"q":""}
+  - Put it on the one item that says the secret itself, never on the other events, views or states that happen under it. Things said where only some people are present are not a secret by that alone: write an entry only when the text shows someone is kept from it, deceived about it, or does not know it.
+  - No item states it: leave "on" empty, write "what" (the secret, one sentence) and "whose" (the id of whom it is about).
+  - A secret BOUNDARIES in KNOWN already shows: write nothing, unless THIS TURN shows someone new kept from it or deceived about it, or someone learning it; then add an entry for that KNOWN item ("on":"M12") naming only those people (unaware, hide_from or knows).
+  - knows: only the people the text shows knowing it when that matters (who was told, an accomplice); do not list everyone else.
+  - knows, unaware and hide_from hold ids of people or groups. A group the text names ("the townspeople", "outsiders", "the guards") is one entry: add it to entities with type group when it is new. unaware: does not know. hide_from: must not be told. Name only whom the text shows.
+- "closed" (top-level array). Read every line under OPEN in KNOWN. When THIS TURN shows it done, broken, cancelled, replaced or no longer possible, add {"ref":"<its id>","status":"fulfilled|missed|cancelled|changed|impossible|resolved","how":"<how it ended, one sentence>","q":""}. Leave out the ones this turn does not end.
+- Views of the same event. When two or more people take part in an event, ask: did they take it the same way? When the text shows they did not (one misreads the other, has a reason they hide, wants something else), write a view for each of them whose body says what this person thinks, wants or misreads that the other does not, and add "unlike":"<id of the other person's view, or of the event or fact it departs from>". A view says the person's own reading, reason or aim; do not only retell the event under their name.`
 
 // RenderKnown writes the selection for the model, each line with its id.
 // It keeps what tells records apart (when, who, to whom, in what scope, on
@@ -101,7 +120,7 @@ func RenderKnown(sel Selection, superseded map[string]bool) string {
 		}
 		b.WriteString("\n")
 	}
-	for _, m := range sel.Memories {
+	memory := func(m KnownMemory) {
 		fmt.Fprintf(&b, "[%s] T%d", m.ID, m.Turn)
 		if m.Date != "" {
 			fmt.Fprintf(&b, " (%s)", m.Date)
@@ -163,11 +182,28 @@ func RenderKnown(sel Selection, superseded map[string]bool) string {
 			writeEffect(&b, fmt.Sprintf("%s.%d", m.ID, k+1), 0, e, "", superseded)
 		}
 	}
+	for _, m := range sel.Memories {
+		if !sel.Open[m.ID] {
+			memory(m)
+		}
+	}
+	if len(sel.Open) > 0 {
+		// oldest first: sel.Memories is in stored order
+		b.WriteString("OPEN (promises, shared goals and questions not closed yet):\n")
+		for _, m := range sel.Memories {
+			if sel.Open[m.ID] {
+				memory(m)
+			}
+		}
+	}
 	for _, e := range sel.Effects {
 		writeEffect(&b, e.Ref, e.Turn, e.Effect, e.Subject, superseded)
 	}
 	for _, l := range sel.Links {
 		fmt.Fprintf(&b, "[%s] T%d %s %s %s\n", l.ID, l.Turn, l.From, l.Rel, l.To)
+	}
+	if sel.Sections && len(sel.Awareness) > 0 {
+		b.WriteString("BOUNDARIES (who knows, does not know or must not be told, as recorded):\n")
 	}
 	for _, a := range sel.Awareness {
 		fmt.Fprintf(&b, "  {%s} %s: %s", a.Target, a.Kind, a.Who)
@@ -190,6 +226,9 @@ func RenderKnown(sel Selection, superseded map[string]bool) string {
 	}
 	if sel.Scene != "" {
 		fmt.Fprintf(&b, "current scene: %s\n", sel.Scene)
+	}
+	if len(sel.Present) > 0 {
+		fmt.Fprintf(&b, "PRESENT (people in the current scene so far): %s\n", strings.Join(sel.Present, ", "))
 	}
 	return b.String()
 }

@@ -11,7 +11,8 @@ import (
 )
 
 // Parse reads a model response. The raw response is always kept by the
-// caller. It takes the last complete response object in the text: an object
+// caller. It takes the last complete response object in the text (with the
+// object it continues, see continues): an object
 // holding one of the response arrays (the model may think or draft one
 // first; text around it, such as code fences, and a complete object that is
 // not a response, such as an item written on its own, are skipped; text
@@ -49,6 +50,12 @@ func Parse(raw string) (Output, []string) {
 		inside := unfinished >= end && i+int(dec.InputOffset()) <= readsTo && emptyObject(v) &&
 			strings.HasSuffix(strings.TrimRight(raw[:i], " \t\r\n"), ":")
 		if isOutput(v) && !inside {
+			// a response written on in a second object right after the
+			// first (other arrays only) is one response; one that writes
+			// an array again replaces it (a draft, then the answer)
+			if merged, ok := continues(obj, v, raw[end:i]); ok {
+				v = merged
+			}
 			obj, end = v, i+int(dec.InputOffset())
 		}
 		i += int(dec.InputOffset())
@@ -103,7 +110,7 @@ func Unreadable(notes []string) bool {
 // elapsed days and no story date. Not an empty answer ("{}" or empty arrays
 // read as they are).
 func Damaged(out Output, notes []string) bool {
-	if out.ElapsedDays != 0 || StoryDateOf(out.StoryDate) != "" || len(out.Entities)+len(out.Memories)+len(out.Scenes)+len(out.Links)+len(out.BodyEvents) > 0 {
+	if out.ElapsedDays != 0 || StoryDateOf(out.StoryDate) != "" || len(out.Entities)+len(out.Memories)+len(out.Scenes)+len(out.Links)+len(out.BodyEvents)+len(out.Boundaries)+len(out.Closed) > 0 {
 		return false
 	}
 	for _, n := range notes {
@@ -114,10 +121,40 @@ func Damaged(out Output, notes []string) bool {
 	return false
 }
 
-var responseArrays = []string{"entities", "memories", "scenes", "links", "body_events"}
+var responseArrays = []string{"entities", "memories", "scenes", "links", "body_events", "boundaries", "closed"}
 
 // isOutput reports an object holding one of the response arrays, or an
 // empty one.
+// continues joins a complete response object with the one written right
+// after it (only white space between them) when the later one holds none of
+// its arrays: the model closed the answer and wrote the rest of it in a
+// second object (11-17: memories in one, scenes, closed and links in the
+// next, and the memories were lost). The earlier object's other values stay.
+func continues(prev, next json.RawMessage, between string) (json.RawMessage, bool) {
+	if prev == nil || strings.TrimSpace(between) != "" {
+		return nil, false
+	}
+	var a, b map[string]json.RawMessage
+	if json.Unmarshal(prev, &a) != nil || json.Unmarshal(next, &b) != nil {
+		return nil, false
+	}
+	for k, v := range b {
+		if _, ok := a[k]; ok && strings.HasPrefix(strings.TrimSpace(string(v)), "[") {
+			return nil, false
+		}
+	}
+	for k, v := range b {
+		if _, ok := a[k]; !ok {
+			a[k] = v
+		}
+	}
+	out, err := json.Marshal(a)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
 func isOutput(v json.RawMessage) bool {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(v, &fields) != nil {
@@ -164,7 +201,7 @@ func jsonPrefix(s string) int {
 // comes right after "{" or ","; the same word inside a string value comes
 // after an escaped quote (\") and is not a key. A key whose closing quote is
 // missing ("memories:[) is still the key. Group 1 is the array name.
-var arrayKey = regexp.MustCompile(`[{,]\s*"(entities|memories|scenes|links|body_events)"?\s*:\s*\[`)
+var arrayKey = regexp.MustCompile(`[{,]\s*"(entities|memories|scenes|links|body_events|boundaries|closed)"?\s*:\s*\[`)
 
 // holdsArray reports text that opens one of the response arrays.
 func holdsArray(s string) bool { return arrayKey.MatchString(s) }
@@ -278,6 +315,18 @@ func salvage(text string, notes []string) (Output, []string) {
 				dropped, ok = decodeItem(item, &e)
 				if ok {
 					out.BodyEvents = append(out.BodyEvents, e)
+				}
+			case "boundaries":
+				var b Boundary
+				dropped, ok = decodeItem(item, &b)
+				if ok {
+					out.Boundaries = append(out.Boundaries, b)
+				}
+			case "closed":
+				var c Closed
+				dropped, ok = decodeItem(item, &c)
+				if ok {
+					out.Closed = append(out.Closed, c)
 				}
 			}
 			if !ok {
@@ -441,7 +490,7 @@ func moveMemories(obj []byte) ([]byte, int) {
 
 // itemStart finds where an item of a response array begins (a link may
 // begin with "from").
-var itemStart = regexp.MustCompile(`\{\s*"(id|ref|kind|from)"\s*:`)
+var itemStart = regexp.MustCompile(`\{\s*"(id|ref|kind|from|on|what)"\s*:`)
 
 // arrayItems reads the items of an array (text just after its '['). An
 // item whose JSON is broken (an unclosed string, a stray quote) is skipped

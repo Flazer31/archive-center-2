@@ -265,7 +265,16 @@ type Selection struct {
 	Awareness []KnownAwareness
 	Links     []KnownLink
 	Scene     string // the open scene, if any
+	// Sections (1.3, a generation call): the open records are shown together
+	// under OPEN, the people of the open scene under PRESENT and the
+	// awareness lines under BOUNDARIES. Open and Present are set with it.
+	Sections bool
+	Open     map[string]bool // shown obligations, shared goals and questions still open
+	Present  []string        // name ids of the people in the open scene's events, in stored order
 }
+
+// KnownSections turns the sections of a generation call's KNOWN on (1.3).
+var KnownSections = true
 
 // Select picks what the model needs to tell new from known for a turn.
 // The starting points are the stored names written in the turn text (and
@@ -792,6 +801,35 @@ func selectKnown(k Known, text string, earlier []string, exclude, pin map[string
 		}
 	}
 	sel.Scene = sceneID
+	if cite && KnownSections {
+		sel.Sections = true
+		sel.Open = map[string]bool{}
+		person := map[string]bool{}
+		for _, n := range sel.Names {
+			if n.Type == "" || n.Type == "person" {
+				person[n.ID] = true
+			}
+		}
+		there := map[string]bool{}
+		for _, m := range sel.Memories {
+			if openNow(m) {
+				sel.Open[m.ID] = true
+			}
+			if m.Kind != "event" || !inScene(m) {
+				continue
+			}
+			who := append([]string{}, m.SeenBy...)
+			if r := m.Roles; r != nil {
+				who = append(append(append(append(who, r.Actor...), r.Target...), r.Speaker...), r.Listener...)
+			}
+			for _, w := range who {
+				if person[w] && !there[w] {
+					there[w] = true
+					sel.Present = append(sel.Present, w)
+				}
+			}
+		}
+	}
 	return sel, why
 }
 

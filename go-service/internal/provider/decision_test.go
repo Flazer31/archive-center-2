@@ -187,3 +187,108 @@ func TestDecisionReview16(t *testing.T) {
 		t.Fatalf("redirect followed: %v %+v auth %q", err, a, gotAuth.Load())
 	}
 }
+
+// Gemini Decision (1.3): the Decisions API path under the AI Studio address,
+// the key in x-goog-api-key (no bearer), the state as input, yes/no as noul
+// with true_description and false_description, P(yes) read from noul and
+// the tokens from total_input_tokens. A missing key is refused before any
+// call.
+func TestDecisionGemini(t *testing.T) {
+	var got []map[string]any
+	var paths, keys, bearers []string
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		got = append(got, body)
+		paths = append(paths, r.URL.Path)
+		keys = append(keys, r.Header.Get("x-goog-api-key"))
+		bearers = append(bearers, r.Header.Get("Authorization"))
+		answers := map[string]any{}
+		qs, _ := body["questions"].(map[string]any)
+		for id := range qs {
+			p := 0.1
+			if strings.HasSuffix(id, "y") {
+				p = 0.9
+			}
+			answers[id] = map[string]any{"type": "noul", "noul": p, "confidence": 0.9}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"answers": answers, "usage": map[string]any{"total_input_tokens": 42, "total_output_tokens": 0, "total_tokens": 42}})
+	}))
+	defer s.Close()
+	p, ok := FindDecision("gemini")
+	if !ok || p.KeyOptional || p.DefaultModel != "gemini-decision-1" || p.DefaultURL != "https://generativelanguage.googleapis.com/v1beta" {
+		t.Fatalf("gemini info %+v", p)
+	}
+	if _, err := NewDecider(DecisionConfig{Provider: "gemini"}); !errors.Is(err, ErrDecisionNoKey) {
+		t.Fatalf("no key: %v", err)
+	}
+	for _, u := range []string{s.URL + "/v1beta", s.URL + "/v1beta/decisions/"} {
+		d, err := NewDecider(DecisionConfig{Provider: "gemini", URL: u, Key: " g-key "})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, err := d.Ask(context.Background(), "장면", []Question{{ID: "M1y", Text: "관계없는가?", Yes: "관계없다", No: "관계있다"}, {ID: "M2", Text: "q2", Yes: "y2", No: "n2"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a.Yes["M1y"] != 0.9 || a.Yes["M2"] != 0.1 || a.InputTokens != 42 || a.Model != "gemini-decision-1" || a.Calls != 1 {
+			t.Fatalf("answers %+v", a)
+		}
+	}
+	for i := range got {
+		b := got[i]
+		q := b["questions"].(map[string]any)["M1y"].(map[string]any)
+		c := q["criteria"].(map[string]any)
+		if paths[i] != "/v1beta/decisions" || keys[i] != "g-key" || bearers[i] != "" || b["input"] != "장면" || b["state"] != nil || b["model"] != "gemini-decision-1" ||
+			q["type"] != "noul" || q["instructions"] != "관계없는가?" || c["true_description"] != "관계없다" || c["false_description"] != "관계있다" || c["true"] != nil {
+			t.Fatalf("request %d %s %+v", i, paths[i], b)
+		}
+	}
+}
+
+// OpenRouter (1.3): its alpha Decisions API at <base>/decisions takes the
+// System One envelope (state, noul criteria true/false) with a bearer key;
+// Gemini Decision is the default model; a refused question stays unanswered.
+func TestDecisionOpenRouter(t *testing.T) {
+	var got []map[string]any
+	var paths, bearers, gkeys []string
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		got = append(got, body)
+		paths = append(paths, r.URL.Path)
+		bearers = append(bearers, r.Header.Get("Authorization"))
+		gkeys = append(gkeys, r.Header.Get("x-goog-api-key"))
+		fmt.Fprintf(w, `{"id":"gen-1","model":%q,"provider":"Google AI Studio","answers":{"M1y":{"type":"noul","noul":0.8},"M2":{"type":"refusal"}},"usage":{"input_tokens":37,"output_tokens":0,"cost":0.0000037}}`, body["model"])
+	}))
+	defer s.Close()
+	p, ok := FindDecision("openrouter")
+	if !ok || p.KeyOptional || p.DefaultModel != "google/gemini-decision-1" || p.DefaultURL != "https://openrouter.ai/api/alpha" {
+		t.Fatalf("openrouter info %+v", p)
+	}
+	if _, err := NewDecider(DecisionConfig{Provider: "openrouter"}); !errors.Is(err, ErrDecisionNoKey) {
+		t.Fatalf("no key: %v", err)
+	}
+	for _, u := range []string{s.URL + "/api/alpha", s.URL + "/api/alpha/decisions/"} {
+		d, err := NewDecider(DecisionConfig{Provider: "openrouter", URL: u, Key: " or-key "})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, err := d.Ask(context.Background(), "장면", []Question{{ID: "M1y", Text: "관계없는가?", Yes: "관계없다", No: "관계있다"}, {ID: "M2", Text: "q2", Yes: "y2", No: "n2"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, answered := a.Yes["M2"]; a.Yes["M1y"] != 0.8 || answered || a.InputTokens != 37 || a.Model != "google/gemini-decision-1" || a.Calls != 1 {
+			t.Fatalf("answers %+v", a)
+		}
+	}
+	for i := range got {
+		b := got[i]
+		q := b["questions"].(map[string]any)["M1y"].(map[string]any)
+		c := q["criteria"].(map[string]any)
+		if paths[i] != "/api/alpha/decisions" || bearers[i] != "Bearer or-key" || gkeys[i] != "" || b["state"] != "장면" || b["input"] != nil || b["model"] != "google/gemini-decision-1" ||
+			q["type"] != "noul" || q["instructions"] != "관계없는가?" || c["true"] != "관계없다" || c["false"] != "관계있다" || c["true_description"] != nil {
+			t.Fatalf("request %d %s %+v", i, paths[i], b)
+		}
+	}
+}

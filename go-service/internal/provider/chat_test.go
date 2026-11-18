@@ -84,7 +84,7 @@ func chat(t *testing.T, c Config) Result {
 }
 
 func TestProviderListIsAC1s(t *testing.T) {
-	want := "openai claude gemini llmgateway vertex openrouter opencode opencode-go neuralwatt vercel copilot ollama custom"
+	want := "openai claude gemini llmgateway vertex openrouter opencode opencode-go neuralwatt vercel nanogpt copilot ollama custom"
 	var ids []string
 	for _, p := range Providers {
 		ids = append(ids, p.ID)
@@ -297,5 +297,32 @@ func TestOllamaFollowsTypedAddress(t *testing.T) {
 	}
 	if p, _ := Find("ollama"); p.DefaultURL != "https://ollama.com" {
 		t.Fatalf("default %s", p.DefaultURL)
+	}
+}
+
+// NanoGPT (1.3): one entry for pay-as-you-go and subscription keys alike gets
+// the chat completions path under them, the key as a bearer, the effort as
+// reasoning_effort, and the answer ceiling as max_tokens even for an OpenAI
+// reasoning model (the gateway takes max_tokens, as OpenRouter does).
+func TestNanoGPTRequests(t *testing.T) {
+	s, got := fake(t)
+	max := 900
+	for _, id := range []string{"nanogpt"} {
+		p, ok := Find(id)
+		if !ok || !p.NeedsKey || !strings.HasPrefix(p.DefaultURL, "https://nano-gpt.com/api/") {
+			t.Fatalf("%s info %+v", id, p)
+		}
+		u, _ := url.Parse(p.DefaultURL)
+		r := chat(t, Config{Provider: id, Model: "gpt-5", URL: s.URL + u.Path, Key: "sk-n", Reasoning: "medium", Options: Options{MaxTokens: &max}})
+		if r.Content != "chat ok" {
+			t.Fatalf("%s answer %+v", id, r)
+		}
+	}
+	g := got()
+	for i, want := range []string{"/api/v1/chat/completions"} {
+		b := g[i].body
+		if g[i].path != want || g[i].header.Get("Authorization") != "Bearer sk-n" || b["reasoning_effort"] != "medium" || b["max_tokens"] != float64(900) || b["max_completion_tokens"] != nil {
+			t.Fatalf("request %d %s %+v", i, g[i].path, b)
+		}
 	}
 }

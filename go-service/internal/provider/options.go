@@ -56,7 +56,7 @@ func (o Options) CallTimeout() time.Duration {
 // native serviceTier is outside U5's OpenAI-compatible-only UI choice.
 func SupportsServiceTier(id string) bool {
 	switch id {
-	case "openai", "llmgateway", "vercel", "neuralwatt", "custom":
+	case "openai", "llmgateway", "vercel", "neuralwatt", "nanogpt", "custom":
 		return true
 	}
 	return false
@@ -148,7 +148,7 @@ func applyOptions(c Config, transport string, headers map[string]string, body ma
 			if transport == "responses" {
 				key = "max_output_tokens"
 			}
-			if transport == "chat" && openAIReasoningModel(c.Model) && c.Reasoning != "" && c.Provider != "ollama" && c.Provider != "openrouter" && c.Provider != "vercel" && c.Provider != "llmgateway" && c.Provider != "neuralwatt" {
+			if transport == "chat" && openAIReasoningModel(c.Model) && c.Reasoning != "" && c.Provider != "ollama" && c.Provider != "openrouter" && c.Provider != "vercel" && c.Provider != "llmgateway" && c.Provider != "neuralwatt" && c.Provider != "nanogpt" {
 				key = "max_completion_tokens"
 				delete(body, "max_tokens")
 			}

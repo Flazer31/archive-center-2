@@ -67,7 +67,7 @@ func (v Voyage) EmbedGroups(ctx context.Context, groups [][]string, inputType st
 		return GroupEmbedding{}, err
 	}
 	if res.StatusCode >= 300 {
-		return GroupEmbedding{}, fmt.Errorf("voyage %d: %s", res.StatusCode, truncate(scrub(string(raw), v.Key), 8000))
+		return GroupEmbedding{}, statusError(res.StatusCode, truncate(scrub(string(raw), v.Key), 8000))
 	}
 	var out struct {
 		Data []struct {
@@ -139,7 +139,7 @@ func (v Voyage) Embed(ctx context.Context, texts []string, inputType string) (Em
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
 	if res.StatusCode >= 300 {
-		return Embedding{}, fmt.Errorf("voyage %d: %s", res.StatusCode, truncate(scrub(string(raw), v.Key), 8000))
+		return Embedding{}, statusError(res.StatusCode, truncate(scrub(string(raw), v.Key), 8000))
 	}
 	var out struct {
 		Data []struct {
@@ -208,4 +208,28 @@ func voyageContextEndpoint(endpoint string) string {
 		return strings.TrimSuffix(endpoint, "/embeddings") + "/contextualizedembeddings"
 	}
 	return endpoint + "/contextualizedembeddings"
+}
+
+// RejectedError is a request Voyage refused as it was sent (a 4xx other
+// than a timeout or a rate limit): the same request fails again, whether or
+// not the connection works (1.3: a turn over the 32,000-token document limit
+// read as a connection problem).
+type RejectedError struct {
+	Status int
+	Body   string
+}
+
+func (e *RejectedError) Error() string { return fmt.Sprintf("voyage %d: %s", e.Status, e.Body) }
+
+// Rejected reports an error that is a refused request (RejectedError).
+func Rejected(err error) bool {
+	var r *RejectedError
+	return errors.As(err, &r)
+}
+
+func statusError(status int, body string) error {
+	if status >= 400 && status < 500 && status != 408 && status != 429 {
+		return &RejectedError{Status: status, Body: body}
+	}
+	return fmt.Errorf("voyage %d: %s", status, body)
 }

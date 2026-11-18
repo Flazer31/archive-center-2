@@ -63,7 +63,9 @@ func testDeliverSharesSelectedBasisBody(t *testing.T, sourceFirst, sameTextOther
 	if got := strings.Count(d.Block, body); got != wantCopies {
 		t.Fatalf("body repeated or a different occurrence merged: got %d, want %d\n%s", got, wantCopies, d.Block)
 	}
-	lines := strings.Split(strings.TrimSpace(d.Block), "\n")[1:]
+	// each record's whole line (the block writes shared awareness once, 1.3)
+	lines := d.Lines
+	assertTransportLines(t, d)
 	sourceBody, viewBasis := "[text B1]", `based on B1 "`+body+`"`
 	if sourceFirst {
 		sourceBody, viewBasis = `[text B1="`+body+`"]`, "based on B1"

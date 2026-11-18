@@ -37,6 +37,9 @@ type Report struct {
 	Embedded int // distinct texts sent
 	Requests int
 	Tokens   int
+	// Shortened counts turns sent again with their context cut because
+	// Voyage refused them as too long (1.3)
+	Shortened int
 }
 
 // Index embeds the memories of the given jobs whose text has no vector of
@@ -123,12 +126,10 @@ func indexGroups(ctx context.Context, st Store, e Embedder, model string, k memo
 		if !send {
 			continue
 		}
-		r.Requests++
-		res, err := e.EmbedGroups(ctx, [][]string{g.chunks}, "document")
+		memVecs, err := embedGroup(ctx, e, g, &r)
 		if err != nil {
 			return r, err
 		}
-		r.Tokens += res.Tokens
 		var keys []string
 		var vectors [][]float32
 		for i, h := range g.keys {
@@ -137,7 +138,7 @@ func indexGroups(ctx context.Context, st Store, e Embedder, model string, k memo
 			}
 			have[h] = true
 			keys = append(keys, h)
-			vectors = append(vectors, res.Vectors[0][g.context+i])
+			vectors = append(vectors, memVecs[i])
 		}
 		if err := st.SaveEmbeddings(model, keys, vectors); err != nil {
 			return r, err
@@ -254,4 +255,92 @@ func prepareGroups(st Store, k memory.Known, names map[string]string, jobs []int
 		}
 	}
 	return order, groups, docHashes, hashes, nil
+}
+
+// documentLimit is the size, in characters, of a turn's memories over which
+// they are sent in several requests when Voyage refuses the turn (its limit
+// is 32,000 tokens a document; a character is at most about a token).
+var documentLimit = 32000
+
+// embedGroup embeds a turn's memories with the turn as their context and
+// returns a vector for each memory, in order. A turn Voyage refuses as sent
+// (a document over its 32,000-token limit, 1.3 user report) is sent again
+// with the context (the turn's input and response) cut to half its length,
+// at most three times, then with none; memories that alone are longer than documentLimit are then
+// sent in halves. A refusal of a short request (no context, memories within
+// the limit), or any other error, is returned as before.
+func embedGroup(ctx context.Context, e Embedder, g *documentGroup, r *Report) ([][]float32, error) {
+	ctxChunks := g.chunks[:g.context]
+	mems := g.chunks[g.context:]
+	size := 0
+	for _, c := range ctxChunks {
+		size += len([]rune(c))
+	}
+	return embedFitted(ctx, e, ctxChunks, size, mems, r)
+}
+
+func embedFitted(ctx context.Context, e Embedder, ctxChunks []string, keep int, mems []string, r *Report) ([][]float32, error) {
+	cuts := 0
+	for {
+		chunks := append(cut(ctxChunks, keep), mems...)
+		n := len(chunks) - len(mems)
+		r.Requests++
+		res, err := e.EmbedGroups(ctx, [][]string{chunks}, "document")
+		if err == nil {
+			r.Tokens += res.Tokens
+			return res.Vectors[0][n:], nil
+		}
+		if !provider.Rejected(err) {
+			return nil, err
+		}
+		if keep > 0 {
+			// halved at most three times, then sent without context: a
+			// refusal that is not about the size (a bad key) stops within
+			// five requests
+			r.Shortened++
+			if cuts++; cuts > 3 {
+				keep = 0
+			} else {
+				keep /= 2
+			}
+			continue
+		}
+		memSize := 0
+		for _, m := range mems {
+			memSize += len([]rune(m))
+		}
+		if len(mems) < 2 || memSize <= documentLimit {
+			return nil, err
+		}
+		half := len(mems) / 2
+		a, err := embedFitted(ctx, e, nil, 0, mems[:half], r)
+		if err != nil {
+			return nil, err
+		}
+		b, err := embedFitted(ctx, e, nil, 0, mems[half:], r)
+		if err != nil {
+			return nil, err
+		}
+		return append(a, b...), nil
+	}
+}
+
+// cut keeps the first keep characters of the context chunks, in order (the
+// input before the response), dropping the chunks that end up empty.
+func cut(chunks []string, keep int) []string {
+	var out []string
+	for _, c := range chunks {
+		rs := []rune(c)
+		if keep <= 0 {
+			break
+		}
+		if len(rs) > keep {
+			rs = rs[:keep]
+		}
+		keep -= len(rs)
+		if strings.TrimSpace(string(rs)) != "" {
+			out = append(out, string(rs))
+		}
+	}
+	return out
 }

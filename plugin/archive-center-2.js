@@ -1,7 +1,7 @@
 //@name archive_center_2
-//@display-name Archive Center 2 1.2.0
+//@display-name Archive Center 2 1.3.0
 //@api 3.0
-//@version 1.2.0
+//@version 1.3.0
 //@arg ac2_url string Backend URL until this device saves its own in the settings screen (default http://127.0.0.1:28190)
 //@arg ac2_token string Access token until this device saves its own (token.txt in the backend's shared data directory)
 //@arg ac2_hash_only int 1 = send only hash and length (no memories can be made), 0 = send message text (default)
@@ -10,7 +10,7 @@
 // the backend chooses into the request. It never changes the response or
 // the chat. Decisions belong to the backend.
 (async () => {
-  const PLUGIN_VERSION = "1.2.0";
+  const PLUGIN_VERSION = "1.3.0";
   const CONTRACT = "observation.v1";
   const FETCH_TIMEOUT_MS = 8000;
   const api = Risuai;
@@ -1625,7 +1625,7 @@
     // the backend says what the saved mode lacks (a turn would use Go's choice)
     const prepUnset = unsetNote("전처리", pv);
     const aiBox = el("div", { class: "ac2-box", id: "ac2-prep-ai-box" }, el("div", { class: "ac2-label" }, "AI 설정 · 관계없는 줄을 고르는 AI"), prepAI.node);
-    const jevBox = el("div", { class: "ac2-box", id: "ac2-prep-jev-box" }, el("div", { class: "ac2-label" }, "판정 모델 설정 · Ollama(clef 등)나 TypeSafe Jev 중 하나"),
+    const jevBox = el("div", { class: "ac2-box", id: "ac2-prep-jev-box" }, el("div", { class: "ac2-label" }, "판정 모델 설정 · Ollama(clef 등), TypeSafe Jev, Gemini Decision, OpenRouter 중 하나"),
       field("ac2-dec-prov", "서비스", dprov),
       dgrid,
       el("div", { class: "ac2-row" }, sbtn("연결 시험 (저장된 설정으로 1회 호출)", test)), dtest.node);
@@ -1644,7 +1644,7 @@
     body.append(
       el("div", { class: "ac2-box" }, el("div", { class: "ac2-label" }, "기억 고르기 · Go가 고른 기억을 모델이 한 번 더 고릅니다"),
         field("ac2-prep-mode", "방식", mode,
-          help("판정 모델: 관계없는 기억을 빼고 이어진 기억을 더해요(턴마다 판정 요청 평균 3~4개). 판정 모델은 Ollama(clef 등)나 TypeSafe Jev 중 고를 수 있어요. AI: AI가 관계없는 줄을 빼요(턴마다 1회). AI + 판정 모델: 둘 다 관계없다고 한 줄만 빼요."),
+          help("판정 모델: 관계없는 기억을 빼고 이어진 기억을 더해요(턴마다 판정 요청 평균 3~4개). 판정 모델은 Ollama(clef 등), TypeSafe Jev, Gemini Decision(Google AI Studio 키), OpenRouter(Gemini Decision 등) 중 고를 수 있어요. AI: AI가 관계없는 줄을 빼요(턴마다 1회). AI + 판정 모델: 둘 다 관계없다고 한 줄만 빼요."),
           help("판정 모델은 지금 입력과 최근 대화 2턴을, AI는 요청에 든 최근 대화 전체를 읽고 판단해요."),
           help("넣는 기억은 저장된 원문 그대로예요. 실패하면 Go가 고른 그대로 넣고 응답은 막지 않아요.")),
         warn, prepUnset),
@@ -1860,7 +1860,7 @@
         : [el("div", { class: "ac2-help" }, v.chat ? "백엔드가 켜진 뒤 이 채팅의 요청이 아직 없어요." : "열린 채팅을 읽지 못했어요.")]));
     const vec = el("div", { class: "ac2-box" }, el("div", { class: "ac2-label" }, "임베딩"),
       line("상태", VECTOR_TEXT[e.state] || e.state), line("모델", e.model || "없음"), line("지금 벡터를 만드는 채팅", e.running_chats || 0), line("벡터 저장을 기다리는 기억", e.waiting_vectors), line("벡터를 다시 만들 채팅", e.backlog_chats),
-      e.index_failing ? el("div", { class: "ac2-msg ac2-err" }, "기억 임베딩이 실패하고 있어요. 다시 연결되면 빠진 벡터를 자동으로 채워요." + (e.index_detail ? " (" + e.index_detail + ")" : "")) : null,
+      e.index_failing ? el("div", { class: "ac2-msg ac2-err" }, (e.index_rejected ? "임베딩 서비스가 기억 임베딩 요청을 거절하고 있어요. 연결 문제가 아니라 키·모델 설정이나 요청 문제예요." : "기억 임베딩이 실패하고 있어요. 다시 연결되면 빠진 벡터를 자동으로 채워요.") + (e.index_detail ? " (" + e.index_detail + ")" : "")) : null,
       e.query_failing ? el("div", { class: "ac2-msg ac2-err" }, "입력 임베딩이 실패하고 있어요. 그동안 기억은 최근 순서로 골라요." + (e.query_detail ? " (" + e.query_detail + ")" : "")) : null);
     const list = el("div", { class: "ac2-box" }, el("div", { class: "ac2-label" }, "최근 활동"),
       ...(v.activity.length ? v.activity.map((a) => el("div", { class: "ac2-act" },
@@ -3312,7 +3312,7 @@
       const e = r.json.embedding;
       progress.replaceChildren(el("div", { class: "ac2-stat" }, "벡터를 기다리는 기억", el("b", {}, String(e.waiting_vectors))),
         el("div", { class: "ac2-stat" }, "임베딩 실패", el("b", {}, String(e.failures ?? 0))));
-      if (e.index_failing) progress.append(el("div", { class: "ac2-warn", style: "grid-column:1/-1" }, "임베딩 실패 · " + (e.index_detail || "다시 시도를 기다려요.")));
+      if (e.index_failing) progress.append(el("div", { class: "ac2-warn", style: "grid-column:1/-1" }, (e.index_rejected ? "임베딩 거절 · " : "임베딩 실패 · ") + (e.index_detail || "다시 시도를 기다려요.")));
     };
     const ask = async (mode) => {
       if (writing) return note.show(BUSY_TEXT, false); // nothing is read or sent again

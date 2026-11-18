@@ -152,7 +152,8 @@ func TestU5PromptEndpointControlsGeneration(t *testing.T) {
 	if _, err := generate.Turn(context.Background(), db, p, "fake", nil, src); err != nil {
 		t.Fatal(err)
 	}
-	if prompts[0] != memory.PromptWithInstructions(src, "", custom) {
+	// the structure rules follow an edited prompt too (1.3)
+	if prompts[0] != memory.PromptWithInstructions(src, "", custom+"\n"+memory.StructureRules) {
 		t.Fatal("stored instructions did not reach actual provider request with source/date")
 	}
 	// A restore deletes the override; subsequent generation uses today's code default.
@@ -168,7 +169,7 @@ func TestU5PromptEndpointControlsGeneration(t *testing.T) {
 	if _, err := generate.Turn(context.Background(), db, p, "fake", nil, src); err != nil {
 		t.Fatal(err)
 	}
-	if prompts[1] != memory.Prompt(src, "") {
+	if prompts[1] != memory.PromptWithInstructions(src, "", memory.Instructions+"\n"+memory.StructureRules) {
 		t.Fatal("default not restored in generation")
 	}
 }

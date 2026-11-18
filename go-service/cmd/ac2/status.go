@@ -13,6 +13,7 @@ import (
 	"archivecenter2/goservice/internal/generate"
 	"archivecenter2/goservice/internal/memory"
 	"archivecenter2/goservice/internal/observe"
+	"archivecenter2/goservice/internal/provider"
 	"archivecenter2/goservice/internal/store"
 )
 
@@ -67,6 +68,9 @@ type vectorPath struct {
 	Failing bool
 	Detail  string
 	At      time.Time
+	// Rejected: the provider refused the request as sent (a key, a model
+	// or a request it does not take), not a connection problem (1.3)
+	Rejected bool
 }
 
 // injectionsKept is how many chats keep their last injection for the
@@ -148,7 +152,7 @@ func (s *status) workerEvent(kind, session string, turn int, err error) {
 		return
 	case "index_failed":
 		s.mu.Lock()
-		s.index = vectorPath{Failing: true, Detail: detail(err), At: s.now()}
+		s.index = vectorPath{Failing: true, Detail: detail(err), At: s.now(), Rejected: provider.Rejected(err)}
 		s.mu.Unlock()
 	case "rearmed":
 		s.add(event{Kind: kind, Detail: strconv.Itoa(turn)})
@@ -283,7 +287,7 @@ func (s *status) view(chat string) map[string]any {
 	vector["running_sessions"] = d["index_running_sessions"]
 	vector["retry_waiting_chats"] = diagInt(d, "index_retry_waiting_chats")
 	if index.Failing {
-		vector["index_detail"], vector["index_at"] = index.Detail, index.At
+		vector["index_detail"], vector["index_at"], vector["index_rejected"] = index.Detail, index.At, index.Rejected
 	}
 	if query.Failing {
 		vector["query_detail"], vector["query_at"] = query.Detail, query.At

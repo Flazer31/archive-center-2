@@ -15,7 +15,12 @@ import (
 // probabilities instead of writing text, over the System One API (POST
 // <base>/v1/systemone {model, state, questions}). Ollama's Clef (local
 // Ollama signed in to ollama.com with clef:cloud, or ollama.com itself
-// with a key) and TypeSafe's Jev.
+// with a key) and TypeSafe's Jev. Google's Gemini Decision (1.3) asks the
+// same questions over its Decisions API (POST <base>/decisions {model,
+// input, questions}, Google AI Studio's key; not on Vertex yet).
+// OpenRouter (1.3) serves Gemini Decision, and Jev, over its alpha
+// Decisions API (POST <base>/decisions, the System One envelope {model,
+// state, questions} with noul criteria true/false, a bearer key).
 
 // DecisionProvider is a decision-model service the settings screen offers.
 type DecisionProvider struct {
@@ -27,12 +32,14 @@ type DecisionProvider struct {
 	KeyOptional bool `json:"key_optional"`
 }
 
-// DecisionProviders are the services offered, in order (Jev and Ollama only
-// for now; Ollama in the cloud, the model being large).
+// DecisionProviders are the services offered, in order (a local Ollama is
+// shown only once saved; see the settings handler).
 var DecisionProviders = []DecisionProvider{
 	{ID: "ollama", Label: "Ollama (이 PC의 Ollama, ollama.com 로그인)", DefaultURL: "http://127.0.0.1:11434", DefaultModel: "clef:cloud", KeyOptional: true},
 	{ID: "ollama_cloud", Label: "Ollama Cloud (ollama.com 직접, API 키)", DefaultURL: "https://ollama.com", DefaultModel: "clef"},
 	{ID: "typesafe", Label: "TypeSafe Jev", DefaultURL: "https://api.typesafe.ai", DefaultModel: "jev-1.13.0"},
+	{ID: "gemini", Label: "Gemini Decision (Google AI Studio, API 키)", DefaultURL: "https://generativelanguage.googleapis.com/v1beta", DefaultModel: "gemini-decision-1"},
+	{ID: "openrouter", Label: "OpenRouter (Gemini Decision 등, API 키)", DefaultURL: "https://openrouter.ai/api/alpha", DefaultModel: "google/gemini-decision-1"},
 }
 
 // FindDecision is the offered service by id.
@@ -85,7 +92,12 @@ func NewDecider(c DecisionConfig) (*Decider, error) {
 	}
 	base := strings.TrimRight(strings.TrimSpace(c.URL), "/")
 	endpoint := base
-	if !strings.HasSuffix(base, "/v1/systemone") {
+	switch {
+	case c.Provider == "gemini" || c.Provider == "openrouter":
+		if !strings.HasSuffix(base, "/decisions") {
+			endpoint = base + "/decisions"
+		}
+	case !strings.HasSuffix(base, "/v1/systemone"):
 		endpoint = strings.TrimSuffix(base, "/v1") + "/v1/systemone"
 	}
 	// a redirect is not followed: the key and the story text go only to
@@ -169,22 +181,34 @@ func (d *Decider) Ask(ctx context.Context, state string, qs []Question) (Answers
 
 // request is one System One call. Ollama asks yes/no as "noul" (the form
 // measured 11-07); TypeSafe's yes/no name is not confirmed, so it is asked
-// as a two-option choice and the probability of "yes" read.
+// as a two-option choice and the probability of "yes" read. Gemini asks
+// noul too, with its own names: input for state, true_description and
+// false_description, the key in x-goog-api-key, total_input_tokens.
 func (d *Decider) request(ctx context.Context, state string, part []Question) (map[string]float64, int64, string, int, error) {
 	questions := map[string]any{}
 	noul := d.cfg.Provider != "typesafe"
+	gemini := d.cfg.Provider == "gemini"
 	for _, q := range part {
-		if noul {
+		if gemini {
+			questions[q.ID] = map[string]any{"type": "noul", "instructions": q.Text, "criteria": map[string]string{"true_description": q.Yes, "false_description": q.No}}
+		} else if noul {
 			questions[q.ID] = map[string]any{"type": "noul", "instructions": q.Text, "criteria": map[string]string{"true": q.Yes, "false": q.No}}
 		} else {
 			questions[q.ID] = map[string]any{"type": "choice", "instructions": q.Text, "criteria": map[string]string{"yes": q.Yes, "no": q.No}}
 		}
 	}
 	headers := map[string]string{}
+	body := map[string]any{"model": d.cfg.Model, "state": state, "questions": questions}
 	if k := strings.TrimSpace(d.cfg.Key); k != "" {
 		headers["Authorization"] = "Bearer " + k
 	}
-	status, raw, err := doJSONClient(ctx, d.HTTP, d.endpoint, headers, map[string]any{"model": d.cfg.Model, "state": state, "questions": questions}, d.cfg.Key)
+	if gemini {
+		delete(body, "state")
+		body["input"] = state
+		delete(headers, "Authorization")
+		headers["x-goog-api-key"] = strings.TrimSpace(d.cfg.Key)
+	}
+	status, raw, err := doJSONClient(ctx, d.HTTP, d.endpoint, headers, body, d.cfg.Key)
 	if err != nil {
 		return nil, 0, "", status, err
 	}
@@ -197,7 +221,8 @@ func (d *Decider) request(ctx context.Context, state string, part []Question) (m
 			Probabilities map[string]float64 `json:"probabilities"`
 		} `json:"answers"`
 		Usage struct {
-			InputTokens int64 `json:"input_tokens"`
+			InputTokens      int64 `json:"input_tokens"`
+			TotalInputTokens int64 `json:"total_input_tokens"` // Gemini
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
@@ -218,5 +243,9 @@ func (d *Decider) request(ctx context.Context, state string, part []Question) (m
 			}
 		}
 	}
-	return yes, res.Usage.InputTokens, res.Model, status, nil
+	tokens := res.Usage.InputTokens
+	if tokens == 0 {
+		tokens = res.Usage.TotalInputTokens
+	}
+	return yes, tokens, res.Model, status, nil
 }

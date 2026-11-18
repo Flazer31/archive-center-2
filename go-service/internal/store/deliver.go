@@ -430,6 +430,30 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			recordedAt[m.ID] = m.At
 		}
 	}
+	// the secret records recorded at an event: the event retells what they
+	// keep (1.3, 11-17: a secret fact recorded at the event that decided
+	// it, M223/M224, M771/M775); the event's line shows their protection
+	secretBelow := map[string][]string{}
+	for _, m := range k.Memories {
+		if m.At == "" {
+			continue
+		}
+		isSecret := false
+		for _, r := range carried[m.ID] { // the record or one of its effects
+			isSecret = isSecret || secret[r]
+		}
+		if isSecret {
+			at := strings.SplitN(m.At, ".", 2)[0]
+			secretBelow[at] = append(secretBelow[at], m.ID)
+		}
+	}
+	// protectBelow adds the protection of the secrets recorded at an event
+	protectBelow := func(id string, own []memory.KnownAwareness, s bool) ([]memory.KnownAwareness, bool) {
+		for _, below := range secretBelow[id] {
+			own, s = protect(carried[below], own, s)
+		}
+		return own, s
+	}
 	protectAt := func(id string, own []memory.KnownAwareness, isSecret bool) ([]memory.KnownAwareness, bool) {
 		seen := map[string]bool{}
 		for at := recordedAt[id]; at != "" && !seen[at]; at = recordedAt[strings.SplitN(at, ".", 2)[0]] {
@@ -453,10 +477,14 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 		_, s := protect(carried[m.ID], nil, false)
 		if completes != "" {
 			_, s = protect(carried[completes], nil, s)
+			// and what that event was recorded at (1.3: an event whose
+			// secret is a fact of its own, recorded at that fact)
+			_, s = protectAt(completes, nil, s)
 		}
 		if bs := m.Basis; bs != nil && bodies[bs.Ref] != "" {
 			_, s = protect(carried[bs.Ref], nil, s)
 			_, s = protectAt(strings.SplitN(bs.Ref, ".", 2)[0], nil, s)
+			_, s = protectBelow(strings.SplitN(bs.Ref, ".", 2)[0], nil, s)
 		}
 		return s
 	}
@@ -567,6 +595,7 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 		inherited := false
 		if at := alone[c.id]; at != "" {
 			own, isSecret = protect(carried[at], own, isSecret)
+			own, isSecret = protectAt(at, own, isSecret) // 1.3: the event's secret fact
 		} else if holds[c.id] == HoldPin {
 			own, isSecret = protectAt(c.id, own, isSecret)
 		} else if parent[c.id] == "" {
@@ -577,10 +606,18 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			// chosen: it is not a secret itself.
 			own, inherited = protectAt(c.id, own, false)
 		}
+		if c.mem.Kind == "event" && len(secretBelow[c.id]) > 0 {
+			// shown with the protection of the secrets recorded at it,
+			// counted in the general lane where it was chosen (1.3)
+			var up bool
+			own, up = protectBelow(c.id, own, false)
+			inherited = inherited || up
+		}
 		basis, newMark, sourceAdded := "", "", 0
 		if bs := c.mem.Basis; bs != nil && bodies[bs.Ref] != "" {
 			own, isSecret = protect(carried[bs.Ref], own, isSecret)
 			own, isSecret = protectAt(strings.SplitN(bs.Ref, ".", 2)[0], own, isSecret)
+			own, isSecret = protectBelow(strings.SplitN(bs.Ref, ".", 2)[0], own, isSecret)
 			if mk, ok := marks[bs.Ref]; ok {
 				basis = "based on " + mk
 			} else {
@@ -594,7 +631,7 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			}
 		}
 		own = distinctAwareness(own)
-		shown := currentValues(*c.mem, kept, sup)
+		shown := withoutRepeatedRoles(currentValues(*c.mem, kept, sup), names)
 		line := deliveryLine(shown, names, basis, own)
 		full := memory.RenderKnown(memory.Selection{Memories: []memory.KnownMemory{shown}, Awareness: own}, sup)
 		size := lineSize(line) // the general lane counts the line sent
@@ -812,21 +849,39 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			out.BodyChars += len([]rune(l)) + 1
 		}
 	}
-	if all := append(append(append(append([]string(nil), out.Names...), out.SecretNames...), lines...), bodyLines...); len(all) > 0 {
+	// the text sent: shared awareness written once (1.3); out.Lines keep
+	// one whole line per record
+	sent := lines
+	var laneLines [2][]string
+	var all0, lane [2][]int
+	for i, id := range out.IDs {
+		all0[0] = append(all0[0], i)
+		l := 0
+		if out.SecretIDs[id] {
+			l = 1
+		}
+		lane[l] = append(lane[l], i)
+	}
+	if GroupAwareness {
+		sent = groupLines(lines, rendered, all0[0], names)
+	}
+	for l := range lane {
+		if GroupAwareness {
+			laneLines[l] = groupLines(lines, rendered, lane[l], names)
+			continue
+		}
+		for _, i := range lane[l] {
+			laneLines[l] = append(laneLines[l], lines[i])
+		}
+	}
+	if all := append(append(append(append([]string(nil), out.Names...), out.SecretNames...), sent...), bodyLines...); len(all) > 0 {
 		body := strings.Join(all, "\n") + "\n"
 		out.Block = BlockTitle + textPrint(body).H + "]\n" + body
 		out.BlockChars = len([]rune(out.Block))
 		// Split the already selected, rendered lines verbatim. Basis marks
 		// resolve across the PDF and retained text together; neither lane
 		// repeats definitions or spends additional memory budget.
-		lanes := [2][]string{append([]string(nil), out.Names...), append([]string(nil), out.SecretNames...)}
-		for i, id := range out.IDs {
-			lane := 0
-			if out.SecretIDs[id] {
-				lane = 1
-			}
-			lanes[lane] = append(lanes[lane], lines[i])
-		}
+		lanes := [2][]string{append(append([]string(nil), out.Names...), laneLines[0]...), append(append([]string(nil), out.SecretNames...), laneLines[1]...)}
 		lanes[1] = append(lanes[1], bodyLines...)
 		out.PDFBlock, out.RetainedBlock = deliveryBlock(lanes[0]), deliveryBlock(lanes[1])
 	}
@@ -1229,6 +1284,43 @@ func textPrint(s string) TextPrint {
 // on the 21 stored scenes). The line still carries the awareness of the
 // values it leaves out: records recorded at those values rely on it for
 // their protection (Sol r5).
+// withoutRepeatedRoles leaves out of a delivered event what its roles already
+// say (1.3, 11-17: seen by and setting repeated roles and place on g's event
+// lines, 583 chars on 10 lines of 9 scenes): seen by keeps only people with
+// no role in it, and a setting is left out when it and a place of the roles
+// name the same place (one contains the other). The stored record, its
+// search words and its vector text are not changed.
+func withoutRepeatedRoles(m memory.KnownMemory, names map[string]string) memory.KnownMemory {
+	r := m.Roles
+	if r == nil {
+		return m
+	}
+	inRole := map[string]bool{}
+	for _, l := range [][]string{r.Actor, r.Target, r.Object, r.Place, r.Speaker, r.Listener} {
+		for _, id := range l {
+			inRole[id] = true
+		}
+	}
+	if len(m.SeenBy) > 0 {
+		var seen []string
+		for _, id := range m.SeenBy {
+			if !inRole[id] {
+				seen = append(seen, id)
+			}
+		}
+		m.SeenBy = seen
+	}
+	if m.Setting != "" {
+		for _, id := range r.Place {
+			if n := names[id]; n != "" && (strings.Contains(m.Setting, n) || strings.Contains(n, m.Setting)) {
+				m.Setting = ""
+				break
+			}
+		}
+	}
+	return m
+}
+
 func currentValues(m memory.KnownMemory, kept, sup map[string]bool) memory.KnownMemory {
 	if !kept[m.ID] {
 		return m
@@ -1292,22 +1384,7 @@ func deliveryLine(m memory.KnownMemory, names map[string]string, basis string, a
 	if len(m.Changed) > 0 {
 		b.WriteString(" | changed later: " + strings.Join(m.Changed, ", "))
 	}
-	for _, a := range aware {
-		fmt.Fprintf(&b, " | %s: %s", strings.ReplaceAll(a.Kind, "_", " "), name(a.Who))
-		if a.Via != "" {
-			fmt.Fprintf(&b, " (%s", a.Via)
-			if a.From != "" {
-				fmt.Fprintf(&b, ", from %s", name(a.From))
-			}
-			b.WriteString(")")
-		}
-		if a.Extent != "" {
-			fmt.Fprintf(&b, " %s", a.Extent)
-		}
-		if a.Part != "" {
-			fmt.Fprintf(&b, " %q", a.Part)
-		}
-	}
+	b.WriteString(awarenessText(aware, names))
 	return b.String()
 }
 

@@ -182,7 +182,7 @@ func TestU5OptionChoicesAndNumbers(t *testing.T) {
 		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}],"content":[{"type":"text","text":"ok"}]}`))
 	}))
 	defer s.Close()
-	for _, id := range []string{"openai", "llmgateway", "vercel", "neuralwatt", "custom"} {
+	for _, id := range []string{"openai", "llmgateway", "vercel", "neuralwatt", "nanogpt", "custom"} {
 		for _, tier := range []string{"standard", "flex", "priority"} {
 			c, err := New(Config{Provider: id, Model: "test", URL: s.URL, Key: "synthetic", Options: Options{ServiceTier: tier}})
 			if err != nil {

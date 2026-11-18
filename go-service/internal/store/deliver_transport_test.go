@@ -2,26 +2,100 @@ package store
 
 import (
 	"archivecenter2/goservice/internal/memory"
+	"slices"
 	"strings"
 	"testing"
 )
 
 func assertTransportLines(t *testing.T, d Delivery) {
 	t.Helper()
-	ordinary, secret := []string{}, []string{}
-	lines := strings.Split(strings.TrimSuffix(d.Block, "\n"), "\n")[1:]
-	if len(lines) != len(d.IDs) {
+	if len(d.Lines) != len(d.IDs) {
 		t.Fatal("fixture lines/IDs differ")
 	}
-	for i, line := range lines {
+	ordinary, secret := []string{}, []string{}
+	for i, line := range d.Lines {
 		if d.SecretIDs[d.IDs[i]] {
 			secret = append(secret, line)
 		} else {
 			ordinary = append(ordinary, line)
 		}
 	}
-	if d.PDFBlock != deliveryBlock(ordinary) || d.RetainedBlock != deliveryBlock(secret) {
-		t.Fatal("transport changed, duplicated or reordered selected lines")
+	// each lane sends every selected line of its own once and nothing else;
+	// a line under a shared header carries that header's awareness (1.3)
+	sameRecords(t, "general", d.PDFBlock, append(append([]string{}, d.Names...), ordinary...))
+	sameRecords(t, "secret", d.RetainedBlock, append(append([]string{}, d.SecretNames...), secret...))
+}
+
+// sentLines reads a delivered block back into whole lines: a line under a
+// "[for the lines below]" header gets the header's awareness.
+func sentLines(block string) []string {
+	if block == "" {
+		return nil
+	}
+	var out []string
+	shared := ""
+	for _, l := range strings.Split(strings.TrimSuffix(block, "\n"), "\n")[1:] {
+		switch {
+		case strings.HasPrefix(l, "- [for the lines below] "):
+			shared = strings.TrimPrefix(l, "- [for the lines below] ")
+		case strings.HasPrefix(l, "  - ") && shared != "":
+			out = append(out, l[2:]+" | "+shared)
+		default:
+			shared = ""
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// awarenessCut splits a line at its awareness: the text before it and the
+// people it names.
+func awarenessCut(l string) (string, []string) {
+	cut := len(l)
+	for _, k := range []string{" | knows: ", " | unaware: ", " | hide from: ", " | allow to: "} {
+		if i := strings.Index(l, k); i >= 0 && i < cut {
+			cut = i
+		}
+	}
+	var who []string
+	for _, part := range strings.Split(l[cut:], " | ") {
+		if _, rest, ok := strings.Cut(part, ": "); ok {
+			for _, w := range strings.Split(rest, ", ") {
+				who = append(who, strings.TrimSpace(w))
+			}
+		}
+	}
+	return l[:cut], who
+}
+
+// sameRecords: the block sends exactly the wanted lines (in any order), each
+// with the same text and every person its awareness names.
+func sameRecords(t *testing.T, lane, block string, want []string) {
+	t.Helper()
+	got := sentLines(block)
+	if len(got) != len(want) {
+		t.Fatalf("%s lane sends %d lines, selected %d:\n%s", lane, len(got), len(want), block)
+	}
+	used := make([]bool, len(got))
+	for _, w := range want {
+		wb, ww := awarenessCut(w)
+		found := false
+		for j, g := range got {
+			gb, gw := awarenessCut(g)
+			if used[j] || gb != wb {
+				continue
+			}
+			for _, x := range ww {
+				if !slices.Contains(gw, x) {
+					t.Fatalf("%s lane lost %q on %q", lane, x, g)
+				}
+			}
+			used[j], found = true, true
+			break
+		}
+		if !found {
+			t.Fatalf("%s lane is missing %q:\n%s", lane, w, block)
+		}
 	}
 }
 

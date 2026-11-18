@@ -71,7 +71,7 @@ func TestModelSettingsEndpoint(t *testing.T) {
 
 	code, v, _ := callModels(t, h, "GET", "")
 	critic := v["critic"].(map[string]any)
-	if code != 200 || critic["source"] != "none" || critic["key_set"] != false || critic["retries"].(float64) != 3 || critic["known_chars"].(float64) != store.DefaultKnownChars || len(v["providers"].([]any)) != 13 {
+	if code != 200 || critic["source"] != "none" || critic["key_set"] != false || critic["retries"].(float64) != 3 || critic["known_chars"].(float64) != store.DefaultKnownChars || len(v["providers"].([]any)) != 14 {
 		t.Fatalf("first view %d %v", code, v)
 	}
 	if m.query() != nil {

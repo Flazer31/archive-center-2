@@ -42,7 +42,8 @@ func TestDeliverDefinesForwardBasisOnSource(t *testing.T) {
 			if !reflect.DeepEqual(got.IDs, wantIDs) {
 				t.Fatalf("selected records/order changed: %v", got.IDs)
 			}
-			lines := strings.Split(strings.TrimSuffix(strings.SplitN(got.Block, "\n", 2)[1], "\n"), "\n")
+			lines := got.Lines // each record's whole line (the block writes shared awareness once, 1.3)
+			assertTransportLines(t, got)
 			definition := `[text B1="` + body + `"]`
 			if !strings.Contains(lines[0], definition) || strings.Contains(lines[1], `based on B1 "`) || !strings.Contains(lines[1], "based on B1") || !strings.Contains(lines[2], "based on B1") {
 				t.Fatalf("forward definition was not moved to its source: %q", lines)
@@ -92,9 +93,11 @@ func TestDeliverDefinesForwardBasisOnSource(t *testing.T) {
 				}
 			}
 			assertTransportLines(t, got)
-			if got.BlockChars != len([]rune(got.Block)) || got.Block != deliveryBlock(lines) {
+			if got.BlockChars != len([]rune(got.Block)) || !strings.HasPrefix(got.Block, BlockTitle+textPrint(strings.SplitN(got.Block, "\n", 2)[1]).H+"]\n") {
 				t.Fatal("final block size or fingerprint is stale")
 			}
+			// the block sends these lines (shared awareness written once, 1.3)
+			sameRecords(t, "block", got.Block, lines)
 		})
 	}
 }

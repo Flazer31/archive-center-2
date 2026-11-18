@@ -52,7 +52,7 @@ var (
 	ollamaLevel = []string{"off", "low", "medium", "high"}
 )
 
-// Providers are AC1's thirteen, in its order.
+// Providers are AC1's thirteen, in its order, and NanoGPT (1.3).
 var Providers = []Info{
 	{ID: "openai", Label: "OpenAI", DefaultURL: "https://api.openai.com/v1", NeedsKey: true, Reasoning: effort},
 	{ID: "claude", Label: "Claude", DefaultURL: "https://api.anthropic.com", NeedsKey: true, Reasoning: claudeLevel},
@@ -64,6 +64,10 @@ var Providers = []Info{
 	{ID: "opencode-go", Label: "OpenCode Go", DefaultURL: "https://opencode.ai/zen/go/v1", NeedsKey: true, Reasoning: effort},
 	{ID: "neuralwatt", Label: "Neuralwatt", DefaultURL: "https://api.neuralwatt.com/v1", NeedsKey: true, Reasoning: effort},
 	{ID: "vercel", Label: "Vercel AI Gateway", DefaultURL: "https://ai-gateway.vercel.sh/v1", NeedsKey: true, Reasoning: effort},
+	// NanoGPT (OpenAI-compatible). One entry for pay-as-you-go and
+	// subscription users alike: NanoGPT bills by the key's own setting
+	// (subscription first / subscription only / pay-as-you-go), not by address.
+	{ID: "nanogpt", Label: "NanoGPT", DefaultURL: "https://nano-gpt.com/api/v1", NeedsKey: true, Reasoning: effort},
 	{ID: "copilot", Label: "GitHub Copilot", DefaultURL: "https://api.githubcopilot.com", NeedsKey: true, Reasoning: effort},
 	// Ollama's own cloud API by default (users run the large models there,
 	// not on their PC); a local Ollama is its address typed in

@@ -196,6 +196,10 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 				instructions += "\n" + memory.BodyRules
 			}
 		}
+		// the structure rules (1.3) follow every prompt, an edited one too
+		if Structure {
+			instructions += "\n" + memory.StructureRules
+		}
 		// the ceiling is on the whole request: what the stored memory may
 		// take is what the instructions, the turn's text and its date
 		// leave; a long reply leaves less (a record that always stays is
@@ -364,6 +368,16 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 	}
 	r.Answer = &Answer{model, r.Prompt, r.Known, r.Result.Content}
 	notes = append(notes, parseNotes...)
+	// the lists of their own are read into the stored items, and a new
+	// current state names the one it replaces (1.3)
+	foldKnown, err := st.KnownFor(earlier)
+	if err != nil {
+		r.Notes = notes
+		return r, err
+	}
+	var foldNotes []string
+	r.Output, foldNotes = memory.Fold(r.Output, foldKnown)
+	notes = append(notes, foldNotes...)
 	saveNotes, err := st.SaveGeneration(job, store.Generation{Model: model, Request: r.Prompt, ReadItems: r.Known, Response: r.Result.Content, Output: r.Output, Notes: notes})
 	if err != nil {
 		r.Notes = notes
@@ -372,6 +386,10 @@ func turn(ctx context.Context, st Store, p Provider, model string, earlier []mem
 	r.Notes = saveNotes
 	return r, nil
 }
+
+// Structure adds memory.StructureRules to every generation call (1.3); the
+// replay tool turns it off to measure the earlier request.
+var Structure = true
 
 // partSeparator joins the requests (and the stored memory shown) of a long
 // reply's parts in the job's record.

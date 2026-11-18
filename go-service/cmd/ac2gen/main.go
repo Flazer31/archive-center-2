@@ -62,11 +62,25 @@ func main() {
 	reportPath := flag.String("report", "", "write one JSON line per turn (sizes of the model input) to this file")
 	embedModel := flag.String("embed-model", "", "Voyage model: index each made turn (key from VOYAGE_API_KEY); empty = no vectors")
 	indexAtEnd := flag.Bool("index-at-end", false, "with -embed-model: index every current job once at the end (fewer requests) instead of each turn")
+	// 1.3 measurement: the request without the structure rules and KNOWN
+	// sections, and the instructions of an earlier version from a file
+	structure := flag.Bool("structure", true, "add the 1.3 structure rules and KNOWN sections")
+	instr := flag.String("instructions", "", "file whose text replaces the critic instructions (stored as the chat's critic prompt)")
 	flag.Parse()
+	generate.Structure, memory.KnownSections = *structure, *structure
 
 	db, err := store.Open(*dsn)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if *instr != "" {
+		t, err := os.ReadFile(*instr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := db.SetCriticPrompt(string(t)); err != nil {
+			log.Fatal(err)
+		}
 	}
 	b, err := os.ReadFile(*logs)
 	if err != nil {

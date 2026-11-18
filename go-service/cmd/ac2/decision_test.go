@@ -51,7 +51,7 @@ func TestDecisionSettings(t *testing.T) {
 		return ids
 	}
 	// the local Ollama is not offered unless already saved
-	if a := call("GET", "/settings/decision", ""); a.Code != 200 || a.V["provider"] != "" || a.V["key_set"] != false || strings.Join(offered(a), ",") != "ollama_cloud,typesafe" {
+	if a := call("GET", "/settings/decision", ""); a.Code != 200 || a.V["provider"] != "" || a.V["key_set"] != false || strings.Join(offered(a), ",") != "ollama_cloud,typesafe,gemini,openrouter" {
 		t.Fatalf("empty view %d %s", a.Code, a.Raw)
 	}
 	if a := call("POST", "/settings/decision/test", ""); a.Code != 400 || a.V["code"] != "decision_off" {
@@ -61,6 +61,8 @@ func TestDecisionSettings(t *testing.T) {
 		{`{"provider":"nope"}`, "unknown_provider"},
 		{`{"provider":"typesafe"}`, "key_required"},
 		{`{"provider":"ollama_cloud","model":"clef"}`, "key_required"},
+		{`{"provider":"gemini"}`, "key_required"},
+		{`{"provider":"openrouter"}`, "key_required"},
 		{`{"provider":`, "bad_request"},
 	} {
 		if a := call("POST", "/settings/decision", c.body); a.Code != 400 || a.V["code"] != c.code {
@@ -69,7 +71,7 @@ func TestDecisionSettings(t *testing.T) {
 	}
 	// local Ollama: no key needed; the defaults are shown
 	a := call("POST", "/settings/decision", `{"provider":"ollama","url":"`+srv.URL+`"}`)
-	if strings.Join(offered(a), ",") != "ollama,ollama_cloud,typesafe" {
+	if strings.Join(offered(a), ",") != "ollama,ollama_cloud,typesafe,gemini,openrouter" {
 		t.Fatalf("a saved local Ollama is not shown: %s", a.Raw)
 	}
 	if a.Code != 200 || a.V["model"] != "clef:cloud" || a.V["url"] != srv.URL {

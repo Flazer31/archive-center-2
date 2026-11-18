@@ -26,6 +26,34 @@ type Output struct {
 	Links     []Link   `json:"links,omitempty"`
 	// BodyEvents are written only when body tracking is on (1.0 E09/E10).
 	BodyEvents []BodyEvent `json:"body_events,omitempty"`
+	// Boundaries and Closed are lists of their own (1.3): who does not know
+	// or must not be told what, and the open records this turn ended. Fold
+	// reads them into the items above; nothing else stores them.
+	Boundaries []Boundary `json:"boundaries,omitempty"`
+	Closed     []Closed   `json:"closed,omitempty"`
+}
+
+// Boundary is one line of who knows, does not know or must not be told
+// something (1.3). On names the item or name that holds the thing (an id of
+// this answer or of KNOWN); with no such item, What says it in one sentence
+// and Whose names whom it is about.
+type Boundary struct {
+	On       string `json:"on,omitempty"`
+	What     string `json:"what,omitempty"`
+	Whose    string `json:"whose,omitempty"`
+	Knows    Who    `json:"knows,omitempty"`
+	Unaware  Who    `json:"unaware,omitempty"`
+	HideFrom Who    `json:"hide_from,omitempty"`
+	Q        string `json:"q,omitempty"`
+}
+
+// Closed is an open record (an obligation, a shared goal, a question) this
+// turn ended (1.3): Ref is its KNOWN id, How says how it ended.
+type Closed struct {
+	Ref    string `json:"ref,omitempty"`
+	Status string `json:"status,omitempty"`
+	How    string `json:"how,omitempty"`
+	Q      string `json:"q,omitempty"`
 }
 
 // BodyEvent is a body fact the turn's text states about a person (AC1
@@ -163,6 +191,9 @@ type Memory struct {
 	Affect    *Affect `json:"affect,omitempty"`
 	Expressed string  `json:"expressed,omitempty"`
 	Differs   string  `json:"differs,omitempty"` // yes | no | unknown
+	// Unlike names the view of another person, or the event or fact, this
+	// view departs from (1.3: two people take the same event differently)
+	Unlike Refs `json:"unlike,omitempty"`
 
 	Awareness
 }

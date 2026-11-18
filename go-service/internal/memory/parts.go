@@ -133,6 +133,7 @@ var refKeys = map[string]bool{
 	"seen_by": true, "actor": true, "target": true, "object": true, "place": true, "speaker": true, "listener": true,
 	"from": true, "who": true, "same_as": true, "relation": true, "partners": true, "candidates": true,
 	"unaware": true, "hide_from": true, "allow_to": true, "child": true, "learns": true,
+	"on": true, "whose": true, "knows": true, "unlike": true,
 }
 
 func renameRefs(v any, ids map[string]string) any {
@@ -194,6 +195,8 @@ func MergeParts(outs []Output) Output {
 		m.Scenes = append(m.Scenes, o.Scenes...)
 		m.Links = append(m.Links, o.Links...)
 		m.BodyEvents = append(m.BodyEvents, o.BodyEvents...)
+		m.Boundaries = append(m.Boundaries, o.Boundaries...)
+		m.Closed = append(m.Closed, o.Closed...)
 	}
 	return m
 }
