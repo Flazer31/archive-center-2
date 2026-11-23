@@ -1,6 +1,6 @@
 # Archive Center 2
 
-**[Archive Center 2 1.3.0](https://github.com/Flazer31/archive-center-2/releases/tag/v1.3.0)**
+**[Archive Center 2 1.4.0](https://github.com/Flazer31/archive-center-2/releases/tag/v1.4.0)**
 
 RisuAI와 PocketRisu에서 쓰는 장기 기억 도구예요. 대화가 길어져 앞부분이 요청에서 빠지기 시작하면, 지난 대화로 만들어 둔 기억 가운데 지금 장면에 필요한 것을 골라 요청에 함께 넣어요.
 
@@ -23,7 +23,7 @@ RisuAI와 PocketRisu에서 쓰는 장기 기억 도구예요. 대화가 길어�
 
 ## 현재 버전
 
-이 저장소의 버전은 **1.3.0**이에요. 1.2에서 바뀐 점과 올리는 방법은 [1.3.0 릴리스](https://github.com/Flazer31/archive-center-2/releases/tag/v1.3.0)에 있어요. 사용 중인 버전은 플러그인 표시와 AC2 설정의 '상태' 탭에서 확인하고, 플러그인과 백엔드는 같은 릴리스의 것을 맞춰 쓰세요.
+이 저장소의 버전은 **1.4.0**이에요. 1.3에서 바뀐 점과 올리는 방법은 [1.4.0 릴리스](https://github.com/Flazer31/archive-center-2/releases/tag/v1.4.0)에 있어요. 사용 중인 버전은 플러그인 표시와 AC2 설정의 '상태' 탭에서 확인하고, 플러그인과 백엔드는 같은 릴리스의 것을 맞춰 쓰세요.
 
 ## 설치
 
@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/inst
 기기에 맞는 패키지를 받아 SHA-256을 확인하고 `~/archive-center2/ac2-<버전>`에 풀어 바로 시작해요. 새 설치 전용이고, 같은 버전 폴더가 있으면 아무것도 바꾸지 않고 멈춰요. 다음부터는 그 폴더의 `01_AC2_start.sh`(macOS는 `01_AC2_start.command`)로 시작해요. 버전을 지정하려면 아래처럼 써요.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.3.0
+curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.4.0
 ```
 
 실제 Linux·macOS·Termux 기기에서는 확인하지 못했어요. 시작한 뒤에는 아래 3번부터 이어 가세요.
@@ -54,7 +54,7 @@ irm https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install-win
 Windows 패키지를 받아 SHA-256을 확인하고 `%USERPROFILE%\archive-center2\ac2-<버전>`에 풀어 바로 시작해요. 새 설치 전용이고, 같은 버전 폴더가 있으면 아무것도 바꾸지 않고 멈춰요. 다음부터는 그 폴더의 `01_AC2_시작.cmd`로 시작해요. 버전을 지정하려면 아래처럼 써요.
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install-windows.ps1))) -Version 1.3.0
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install-windows.ps1))) -Version 1.4.0
 ```
 
 시작한 뒤에는 아래 3번부터 이어 가세요.
@@ -65,10 +65,10 @@ Windows 패키지를 받아 SHA-256을 확인하고 `%USERPROFILE%\archive-cente
 
    | 운영체제 | 파일 | 시작 |
    |---|---|---|
-   | Windows x64 | `ac2-1.3.0-windows-amd64.zip` | `01_AC2_시작.cmd` 두 번 클릭 |
-   | Linux x64 / arm64 | `ac2-1.3.0-linux-amd64.zip` / `-linux-arm64.zip` | `sh 01_AC2_start.sh` |
-   | macOS Intel / Apple Silicon | `ac2-1.3.0-darwin-amd64.zip` / `-darwin-arm64.zip` | `01_AC2_start.command` |
-   | Termux arm64 | `ac2-1.3.0-android-arm64.zip` | `sh 01_AC2_start.sh` (Termux 홈 폴더 안에서) |
+   | Windows x64 | `ac2-1.4.0-windows-amd64.zip` | `01_AC2_시작.cmd` 두 번 클릭 |
+   | Linux x64 / arm64 | `ac2-1.4.0-linux-amd64.zip` / `-linux-arm64.zip` | `sh 01_AC2_start.sh` |
+   | macOS Intel / Apple Silicon | `ac2-1.4.0-darwin-amd64.zip` / `-darwin-arm64.zip` | `01_AC2_start.command` |
+   | Termux arm64 | `ac2-1.4.0-android-arm64.zip` | `sh 01_AC2_start.sh` (Termux 홈 폴더 안에서) |
 
    `bin` 폴더의 실행 파일을 직접 실행하지 마세요. Windows 외에는 해당 OS에서 실제로 실행해 보지 못했어요.
 
@@ -82,7 +82,7 @@ Windows 패키지를 받아 SHA-256을 확인하고 `%USERPROFILE%\archive-cente
 
 5. 대화를 진행하면 돼요. 기억은 다음 입력이 들어올 때 앞 턴의 것을 만들고, 대화가 한 번에 보내는 범위(RisuAI 최대 컨텍스트)를 넘어선 뒤부터 요청에 들어가요. 그 전에도 기억은 만들어 두고 있어요. 긴 문맥에 약한 모델이라면 최대 컨텍스트를 AC2 몫(기본 일반 2,000자·비밀 4,000자)만큼 낮춰 두세요.
 
-자세한 순서와 문제 해결은 릴리스에 함께 있는 `AC2-1.3.0-guide-ko.txt`를 보세요.
+자세한 순서와 문제 해결은 릴리스에 함께 있는 `AC2-1.4.0-guide-ko.txt`를 보세요.
 
 ## 데이터와 업데이트
 
@@ -92,35 +92,37 @@ Windows 패키지를 받아 SHA-256을 확인하고 `%USERPROFILE%\archive-cente
 - 버튼을 누를 때만 GitHub에 접속하고 자동으로 확인하지 않아요. data는 그대로 이어지고, 플러그인 파일(`archive-center-2.js`)은 RisuAI에서 따로 다시 가져와야 해요. 새 ZIP을 새 폴더에 풀어 실행하는 방법도 쓸 수 있어요. 업데이트를 찾지 않게 하려면 환경변수 `AC2_UPDATE_GITHUB_REPO=off`를 설정하세요.
 - 오류와 로그는 그대로 보여 주고 API 키·토큰·비밀번호 값만 가려요. 등록되지 않은 오류도 백엔드가 보낸 코드와 설명을 함께 보여 줘요.
 - 기본 설정은 모든 주소에서 연결을 받아요. 이 PC에서만 받게 하려면 시작 파일 뒤에 `-listen 127.0.0.1`을 붙이세요.
+- 기본 포트 28190을 다른 프로그램이 쓰고 있으면 시작 파일 뒤에 `-port 28191`처럼 붙여 바꿔요. 시작할 때마다 붙이고, 연결 탭 주소도 같은 번호로 바꾸세요.
 
-## 1.2로 되돌아가기
+## 1.3으로 되돌아가기
 
-1.3에 문제가 있으면 1.2로 돌아갈 수 있어요. 1.3은 DB 구조를 바꾸지 않았어요. 저장 장면으로 확인했을 때 1.2.0과 1.1.0 모두 1.3에서 만든 기억을 오류 없이 읽었어요. 기억 표시는 그 버전의 방식으로 나와요.
+1.4에 문제가 있으면 1.3으로 돌아갈 수 있어요. 1.4는 DB 구조를 바꾸지 않았어요. 다만 1.3이 1.4에서 만든 기억을 읽는 것은 실제로 돌려 확인하지 못했어요. 1.4가 위치·몸·차림으로 나눠 적은 지금 상태를 1.3은 서로 바꾸지 못해서, 옛 상태가 함께 보일 수 있어요.
 
-1. 실행 중인 1.3을 꺼요(Windows는 `02_AC2_종료.cmd`).
-2. 1.2를 시작해요.
-   - 1.2 폴더가 남아 있으면 그 폴더의 시작 파일을 실행해요.
-   - 없으면 1.2를 새로 설치해요.
-     - Windows: `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install-windows.ps1))) -Version 1.2.0`
-     - Linux·macOS·Termux: `curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.2.0`
-     - 또는 [1.2.0 릴리스](https://github.com/Flazer31/archive-center-2/releases/tag/v1.2.0)의 ZIP을 새 폴더에 풀어요.
-3. RisuAI 플러그인 화면의 **+** 버튼으로 1.2 폴더의 `archive-center-2.js`를 다시 가져와요.
+1. 실행 중인 1.4를 꺼요(Windows는 `02_AC2_종료.cmd`).
+2. 1.3을 시작해요.
+   - 1.3 폴더가 남아 있으면 그 폴더의 시작 파일을 실행해요.
+   - 없으면 1.3을 새로 설치해요.
+     - Windows: `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install-windows.ps1))) -Version 1.3.0`
+     - Linux·macOS·Termux: `curl -fsSL https://raw.githubusercontent.com/Flazer31/archive-center-2/main/install.sh | sh -s -- --version 1.3.0`
+     - 또는 [1.3.0 릴리스](https://github.com/Flazer31/archive-center-2/releases/tag/v1.3.0)의 ZIP을 새 폴더에 풀어요.
+3. RisuAI 플러그인 화면의 **+** 버튼으로 1.3 폴더의 `archive-center-2.js`를 다시 가져와요.
 
-다시 1.3으로 올 때도 같은 방법으로 1.3을 시작하고 1.3의 `archive-center-2.js`를 가져오면 돼요.
+다시 1.4로 올 때도 같은 방법으로 1.4를 시작하고 1.4의 `archive-center-2.js`를 가져오면 돼요.
 
 ## 알려진 제한
 
 - 오래전 기억 가운데 필요한 것을 못 가져오는 경우가 있어요.
-- 1.3부터 비밀마다 누가 모르는지·누구에게 숨기는지를 적지만, 같은 비밀을 뒤 턴에서 다시 말할 때 보호 표시 없이 저장되는 경우가 남아 있어요.
+- 요청에 실린 최근 대화(몇 턴 전 일 포함)는 기억으로 다시 넣지 않고 원문에 맡겨요.
+- 비밀마다 누가 모르는지·누구에게 숨기는지를 적지만, 같은 비밀을 뒤 턴에서 다시 말할 때 보호 표시 없이 저장되는 경우가 남아 있어요.
 - 비밀 기억이 필요 이상으로 들어가는 경우가 있어요.
 - 긴 채팅에서는 평론가 요청을 기본 50,000자 안으로 줄여 보내므로 오래된 기억 일부가 빠진 채로 새 기억을 만들 수 있어요(비밀 보호가 붙은 기억은 빠지지 않아요).
 - NanoGPT, Gemini Decision, OpenRouter는 실제 서비스로 호출해 확인하지 못했어요.
 - 응답이 아주 긴 턴(2만 자 이상)은 나눠 읽게 바뀌었지만, 효과는 장면 하나에서만 확인했어요.
 - 전처리 AI는 요청마다 최근 대화 전문을 보내서 입력이 커요.
 - 신체 추적은 이야기 안에서 태어난 딸도 어릴 때부터 주기를 계산해요.
-- 일부 화면과 기능은 실제 RisuAI·PocketRisu 화면에서 확인이 덜 됐어요.
+- 일부 화면과 기능은 실제 RisuAI·PocketRisu 화면에서 확인이 덜 됐어요. 모바일 진행 표시 수정도 실제 휴대폰에서는 아직이에요.
 
-전체 목록은 `AC2-1.3.0-guide-ko.txt`의 "알려진 제한"에 있어요.
+전체 목록은 `AC2-1.4.0-guide-ko.txt`의 "알려진 제한"에 있어요.
 
 ## 소스에서 빌드
 

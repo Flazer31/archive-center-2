@@ -483,6 +483,80 @@ test("narrative support (review 20 B-01, B-02): the improved input goes into thi
   await state.unload();
 });
 
+test("1.4 I081: a request handed back sends the fingerprints of the plugin's messages and of the improved input it holds; a fresh request sends none", async () => {
+  const block = memoryBlock("- M1\n"), after = guideMsg("[서사 참고]\n- 약속\n");
+  const state = { storeData: {}, calls: [], backendUp: true, rereadChat: chat([]),
+    injectReply: { block, guide: { after_memory: after }, input_rewrite: { from: "묻는다", to: "A 묻는다" } } };
+  const h = await loadPlugin(state);
+  const print = (text) => text.slice(text.indexOf(" | ") + 3, text.indexOf("]\n"));
+  const out = await h.beforeRequest[0]([{ role: "user", content: "묻는다" }], "model");
+  assert.deepStrictEqual(state.injects[state.injects.length - 1].handed_back, [], "a fresh request");
+  // the host's retry: the same request back; the backend (holding the
+  // improvement's print) answers without another improvement
+  state.injectReply = { block, guide: { after_memory: after } };
+  const again = await h.beforeRequest[0](JSON.parse(JSON.stringify(out)), "model");
+  const sent = state.injects[state.injects.length - 1].handed_back;
+  assert.ok(sent.includes(print(block)) && sent.includes(print(after)), "block and guide prints: " + JSON.stringify(sent));
+  const fp = (text) => print(memoryBlock(text)); // a text's fingerprint as the block title carries it
+  assert.ok(sent.some((p) => p.startsWith("rw:") && p.endsWith(":" + fp("묻는다"))), "the improved input's print, with the text it improved: " + JSON.stringify(sent));
+  assert.deepStrictEqual(again.map((m) => m.content), out.map((m) => m.content), "the retry's request as the first");
+  // a later plugin put a message at the end, a request trigger one at the
+  // start: the improvement is still seen
+  const shifted = JSON.parse(JSON.stringify(out));
+  shifted.push({ role: "system", content: "later plugin" });
+  await h.beforeRequest[0](shifted, "model");
+  assert.ok(state.injects[state.injects.length - 1].handed_back.some((p) => p.startsWith("rw:")), "a message added at the end");
+  const prefilled = JSON.parse(JSON.stringify(out));
+  prefilled.push({ role: "assistant", content: "prefill" });
+  await h.beforeRequest[0](prefilled, "model");
+  assert.ok(state.injects[state.injects.length - 1].handed_back.some((p) => p.startsWith("rw:")), "an assistant prefill at the end");
+  const both = [{ role: "system", content: "trigger" }, ...JSON.parse(JSON.stringify(out))];
+  await h.beforeRequest[0](both, "model");
+  assert.ok(state.injects[state.injects.length - 1].handed_back.some((p) => p.startsWith("rw:")), "a message added at the start");
+  // only the improvement came back (no memory, no guide): it is still seen
+  state.injectReply = { block: "" };
+  await h.beforeRequest[0]([{ role: "user", content: "A 묻는다" }], "model");
+  assert.deepStrictEqual(state.injects[state.injects.length - 1].handed_back.filter((p) => p.startsWith("rw:")).length, 1, "the improvement alone is still seen");
+  // the improved text only in an earlier turn (before the last reply): not this turn's
+  await h.beforeRequest[0]([{ role: "user", content: "A 묻는다" }, { role: "assistant", content: "답" }, { role: "user", content: "다음" }], "model");
+  assert.deepStrictEqual(state.injects[state.injects.length - 1].handed_back, [], "an earlier turn's text is not this turn's improvement");
+  // the input improved while a preset after it holds the same original
+  // text (only the input is replaced): the retry is still seen
+  state.injectReply = { block: "", input_rewrite: { from: "묻는다", to: "D 묻는다" } };
+  const withPreset = await h.beforeRequest[0]([{ role: "user", content: "묻는다" }, { role: "user", content: "묻는다" }], "model");
+  assert.deepStrictEqual(withPreset.map((m) => m.content), ["D 묻는다", "묻는다"], "only the input is improved");
+  state.injectReply = { block: "" };
+  await h.beforeRequest[0](JSON.parse(JSON.stringify(withPreset)), "model");
+  assert.deepStrictEqual(state.injects[state.injects.length - 1].handed_back.filter((p) => p.startsWith("rw:")).length, 1, "the retry with the preset still holding the original text");
+  // the user's own text back (a trigger restored it): no improvement print
+  await h.beforeRequest[0]([{ role: "user", content: "묻는다" }], "model");
+  assert.deepStrictEqual(state.injects[state.injects.length - 1].handed_back, [], "the user's text is not an improvement");
+  await state.unload();
+});
+
+test("1.4 I081: a chat a main request went for stays among the 50 whose improvements are known (as the backend keeps its answers)", async () => {
+  const state = { storeData: {}, calls: [], backendUp: true, rereadChat: { ...chat([]), id: "A" } };
+  const h = await loadPlugin(state);
+  const improve = async (id) => {
+    state.rereadChat = { ...chat([]), id };
+    state.injectReply = { block: "", input_rewrite: { from: "now", to: id + " now" } };
+    return h.beforeRequest[0]([{ role: "user", content: "now" }], "model");
+  };
+  const outA = await improve("A");
+  for (let i = 0; i < 49; i++) await improve("c" + i);
+  // A's retry: still known, and A becomes the chat used last
+  state.rereadChat = { ...chat([]), id: "A" };
+  state.injectReply = { block: "" };
+  await h.beforeRequest[0](JSON.parse(JSON.stringify(outA)), "model");
+  assert.strictEqual(state.injects[state.injects.length - 1].handed_back.filter((p) => p.startsWith("rw:")).length, 1, "A known after 49 others");
+  await improve("c49");
+  state.rereadChat = { ...chat([]), id: "A" };
+  state.injectReply = { block: "" };
+  await h.beforeRequest[0](JSON.parse(JSON.stringify(outA)), "model");
+  assert.strictEqual(state.injects[state.injects.length - 1].handed_back.filter((p) => p.startsWith("rw:")).length, 1, "A, used after the others, outlives the oldest");
+  await state.unload();
+});
+
 test("narrative support: an improved input that is a substring of the original (words removed) still replaces it; one that contains the original is applied once", async () => {
   const state = { storeData: {}, calls: [], backendUp: true, rereadChat: chat([]), injectReply: { block: "", input_rewrite: { from: "오늘 오늘 갔어", to: "오늘 갔어" } } };
   const h = await loadPlugin(state);
@@ -2095,8 +2169,11 @@ test("U5 backend placement integration", { skip: !process.env.AC2_U5_BACKEND }, 
 // U6: full production plugin with asynchronous SafeElement boundaries.
 // No HUD renderer, polling policy or retry eligibility is replaced here.
 class U6Element {
-  constructor(tag) { U6Element.made++; this.tag = tag; this.children = []; this.listeners = {}; this.style = ""; this.text = ""; this.parent = null; this.checked = false; }
-  setAttribute(k, v) { this[k] = String(v); }
+  constructor(tag, hostDOM = true) { U6Element.made++; this.tag = tag; this.hostDOM = hostDOM; this.children = []; this.listeners = {}; this.style = ""; this.text = ""; this.parent = null; this.checked = false; }
+  setAttribute(k, v) {
+    if (this.hostDOM && !k.startsWith("x-")) throw new Error("Can only set attributes starting with 'x-' for security reasons. for other attributes, use dedicated methods.");
+    this[k] = String(v);
+  }
   addEventListener(type, fn) { const id = "event-" + Object.keys(this.listeners).length; this.listeners[id] = { type, fn }; return Promise.resolve(id); }
   async removeEventListener(type, id) { assert.ok(this.listeners[id], "listener removed from wrong SafeElement"); delete this.listeners[id]; }
   async setTextContent(text) { this.text = text; }
@@ -2121,8 +2198,8 @@ const u6View = (active, failed = false) => {
 async function u6Host(options = {}) {
   const state = { storeData: {}, calls: [], backendUp: true, rereadChat: chat([]), ...options };
   const host = makeHost(state), originalFetch = host.api.nativeFetch;
-  const root = new U6Element("body"), frame = new U6Element("body");
-  const timers = [], settings = [], asks = [], posts = [];
+  const root = new U6Element("body"), frame = new U6Element("body", false);
+  const timers = [], settings = [], asks = [], posts = [], warnings = [];
   let hostReads = 0, permissions = 0;
   const doc = { querySelector: async (s) => { assert.strictEqual(s, "body"); return root; }, createElement: async (tag) => new U6Element(tag) };
   host.api.getChatFromIndex = async () => { hostReads++; return state.rereadChat; };
@@ -2151,11 +2228,11 @@ async function u6Host(options = {}) {
   };
   const set = (fn, ms) => { if (ms === 2000 || ms === 15000 || ms === 10000) { const h = { fn, ms, cleared: false }; timers.push(h); return h; } return setTimeout(fn, ms); };
   const clear = (h) => { if (h && typeof h === "object" && "cleared" in h) h.cleared = true; else clearTimeout(h); };
-  const ctx = vm.createContext({ Risuai: host.api, document: { body: frame, createElement: (tag) => new U6Element(tag), getElementById: () => null, head: new U6Element("head") },
-    console: { warn() {}, log() {} }, setTimeout: set, clearTimeout: clear, AbortController, TextEncoder, Date, Math, JSON, Promise, Map });
+  const ctx = vm.createContext({ Risuai: host.api, document: { body: frame, createElement: (tag) => new U6Element(tag, false), getElementById: () => null, head: new U6Element("head", false) },
+    console: { warn: (...args) => warnings.push(args), log() {} }, setTimeout: set, clearTimeout: clear, AbortController, TextEncoder, Date, Math, JSON, Promise, Map });
   await vm.runInContext(SRC, ctx);
   await tick(30);
-  return { state, root, frame, host, asks, posts, settings, timers, reads: () => hostReads, permissions: () => permissions,
+  return { state, root, frame, host, asks, posts, settings, timers, warnings, reads: () => hostReads, permissions: () => permissions,
     pending: () => timers.filter((t) => t.ms === 2000 && !t.cleared),
     fire: async () => { const t = timers.find((t) => t.ms === 2000 && !t.cleared); assert.ok(t, "HUD should have a timer"); t.cleared = true; await t.fn(); await tick(10); },
     close: () => state.unload() };
@@ -3971,6 +4048,35 @@ test("maintenance: the HUD setting saves at once; reindex shows the targets and 
   uiNoNull(s.body);
 });
 
+test("1.4 I255: the chip tells the latest reply, stored and not yet confirmed, is made into memory at the next input, once nothing earlier is under way", async () => {
+  const turn = (n, replied, confirmed, gen, count) => ({ turn: n, stages: [{ key: "observed", state: "done" }, { key: "response_saved", state: replied ? "done" : "waiting" },
+    { key: "confirmed", state: confirmed ? "done" : "waiting" }, { key: "generation", state: gen, count }] });
+  const chipOf = async (turns) => {
+    const v = u6View(false);
+    v.turns = turns;
+    const h = await u6Host({ hud: v });
+    await tick(30);
+    const text = u6Text(h.root);
+    await h.close();
+    return text;
+  };
+  // one turn: replied, waiting for the next input
+  assert.ok((await chipOf([turn(1, true, false, "waiting")])).includes("AC2 · 다음 입력 때 저장"));
+  // two turns, newest first: the latest waits for the next input, the earlier is stored
+  assert.ok((await chipOf([turn(2, true, false, "waiting"), turn(1, true, true, "done", 2)])).includes("AC2 · 다음 입력 때 저장"));
+  // the earlier turn's memory is still being made: that is told first
+  assert.ok((await chipOf([turn(2, true, false, "waiting"), turn(1, true, true, "running")])).includes("AC2 · 만드는 중"));
+  // no reply yet: not told
+  assert.ok(!(await chipOf([turn(1, false, false, "waiting")])).includes("다음 입력 때 저장"));
+  // the latest turn off, or its memory already made (a backfill): told as such
+  assert.ok((await chipOf([turn(1, true, false, "off")])).includes("AC2 · 기억 안 함"));
+  assert.ok((await chipOf([turn(1, true, false, "done", 1)])).includes("AC2 · 1개 저장"));
+  assert.ok((await chipOf([turn(2, true, false, "done", 1), turn(1, true, true, "done", 2)])).includes("AC2 · 2개 저장"));
+  // confirmed and waiting for its memory: the usual waiting
+  const confirmed = await chipOf([turn(1, true, true, "waiting")]);
+  assert.ok(confirmed.includes("AC2 · 기다리는 중") && !confirmed.includes("다음 입력 때 저장"), confirmed);
+});
+
 test("turn HUD: off draws nothing; on, the chip names the memory given and the last turn's state, and it asks again only while a turn is under way", async () => {
   const off = u6View(false); off.settings.enabled = false;
   const h0 = await u6Host({ hud: off });
@@ -3998,6 +4104,32 @@ test("turn HUD: off draws nothing; on, the chip names the memory given and the l
   assert.ok(h.asks.length > asks, "a request tells the HUD");
   await h.close();
   assert.strictEqual(h.root.children.length, 0, "unload removes the chip");
+});
+
+test("turn HUD: the detail panel opens without errors under the host attribute restriction and still closes", async () => {
+  const h = await u6Host({ hud: u6View(true) });
+  try {
+    const element = new U6Element("button");
+    assert.throws(() => element.setAttribute("aria-label", "닫기"), {
+      message: "Can only set attributes starting with 'x-' for security reasons. for other attributes, use dedicated methods.",
+    });
+    element.setAttribute("x-test", 1);
+    assert.strictEqual(element["x-test"], "1");
+    const chip = u6All(h.root).find((e) => e.tag === "button");
+    assert.ok(chip, "the compact HUD is visible before opening");
+    await chip.click(); await tick(20);
+    assert.deepStrictEqual(h.warnings, [], "opening the panel must not log a HUD error");
+    const panel = h.root.children[0]?.children[1];
+    assert.ok(panel && u6Text(panel).includes("AC2 기억 처리"), "the detail panel is attached to the host page");
+    await h.fire();
+    assert.deepStrictEqual(h.warnings, [], "polling the open panel must not repeat a HUD error");
+    assert.strictEqual(h.root.children[0].children[1], panel, "the detail panel stays visible after polling");
+    const close = u6All(panel).find((e) => e.tag === "button" && e.text === "×");
+    assert.ok(close, "the close button is visible");
+    await close.click(); await tick(20);
+    assert.strictEqual(h.root.children.length, 0, "the close button still dismisses the HUD");
+    assert.deepStrictEqual(h.warnings, [], "closing the panel must not log a HUD error");
+  } finally { await h.close(); }
 });
 
 test("turn HUD: the chip opens to the memory given and the stages; a failed turn offers its retry; closing hides it", async () => {

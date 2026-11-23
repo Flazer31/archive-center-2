@@ -104,6 +104,73 @@ func TestFoldStateReplacesEarlierState(t *testing.T) {
 	}
 }
 
+// 1.4: a state is written per aspect; a new aspect replaces the same aspect
+// and an earlier whole state, never another aspect (L-085: the clothes were
+// lost when the place changed).
+func TestFoldStateReplacesSameAspect(t *testing.T) {
+	k := Known{Memories: []KnownMemory{
+		{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", Mode: "상태", Slot: "지금/위치", About: "N1", Body: "가람은 성문 앞에 있다."}},
+		{ID: "M2", Turn: 1, Memory: Memory{Kind: "fact", Mode: "상태", Slot: "지금/차림·소지", About: "N1", Body: "가람은 감청색 튜닉을 입었다."}},
+		{ID: "M3", Turn: 1, Memory: Memory{Kind: "fact", Mode: "상태", Slot: StateSlot, About: "N2", Body: "다온은 여관에 있다."}},
+	}}
+	out, _ := Parse(`{"memories":[{"id":"m1","kind":"fact","mode":"상태","slot":"지금/위치","about":"N1","body":"가람은 여관 2층에 있다."},
+	 {"id":"m2","kind":"fact","slot":"지금/몸","about":"N2","body":"다온은 지쳤다."}]}`)
+	got, _ := Fold(out, k)
+	if w := got.Memories[0].Was; len(w) != 1 || w[0] != "M1" {
+		t.Fatalf("place state names %v, want only the earlier place state", w)
+	}
+	if got.Memories[1].Mode != "상태" {
+		t.Fatalf("an aspect slot without a mode was not read as a state: %q", got.Memories[1].Mode)
+	}
+	if w := got.Memories[1].Was; len(w) != 1 || w[0] != "M3" {
+		t.Fatalf("an aspect state names %v, want the earlier whole state", w)
+	}
+	// a whole state still replaces every aspect
+	out, _ = Parse(`{"memories":[{"id":"m1","kind":"fact","mode":"상태","slot":"지금","about":"N1","body":"가람은 잠들었다."}]}`)
+	got, _ = Fold(out, k)
+	if w := got.Memories[0].Was; len(w) != 2 {
+		t.Fatalf("a whole state names %v, want both aspects", w)
+	}
+}
+
+// 1.4: two aspects of one answer naming an earlier whole
+// state replace it whole, so it is not left current as changed in part; a
+// second state of the same subject and aspect in one answer replaces the
+// first.
+func TestStateAspectsReplaceWholeAndEachOther(t *testing.T) {
+	k := Known{Memories: []KnownMemory{
+		{ID: "M1", Turn: 1, Memory: Memory{Kind: "fact", Mode: "상태", Slot: StateSlot, About: "N1", Body: "가람은 복도에 있고 튜닉을 입었다."}},
+	}}
+	out, _ := Parse(`{"memories":[{"id":"m1","kind":"fact","mode":"상태","slot":"지금/위치","about":"N1","body":"가람은 침실에 있다."},
+	 {"id":"m2","kind":"fact","mode":"상태","slot":"지금/차림·소지","about":"N1","body":"가람은 잠옷을 입었다."},
+	 {"id":"m3","kind":"fact","mode":"상태","slot":"지금/위치","about":"N1","body":"가람은 침대에 누웠다."}]}`)
+	got, _ := Fold(out, k)
+	if w := got.Memories[2].Was; !hasRef(w, "m1") {
+		t.Fatalf("the second place state of one answer names %v, want the first (m1) too", w)
+	}
+	k.Memories = append(k.Memories,
+		KnownMemory{ID: "M2", Turn: 2, Memory: got.Memories[0]},
+		KnownMemory{ID: "M3", Turn: 2, Memory: got.Memories[1]})
+	sup := Superseded(k)
+	if !sup["M1"] {
+		t.Fatalf("a whole state named by two aspects is still current: %v", sup)
+	}
+	for _, m := range CurrentFacts(k) {
+		if m.ID == "M1" {
+			t.Fatal("the earlier whole state is still a current fact")
+		}
+	}
+}
+
+func hasRef(w Refs, id string) bool {
+	for _, x := range w {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}
+
 // A boundary on an event that also says the secret keeps the awareness on a
 // fact of that sentence; the event is recorded at it (11-17). On a fact, or
 // with no sentence, the item itself keeps the awareness as before.

@@ -56,6 +56,14 @@ func TestBaselinePromiseHistoryAndClosedCurrentFacts(t *testing.T) {
 	if !has(after.IDs, promise.ID) || !has(after.IDs, done.Memories[0].ID) {
 		t.Fatalf("baseline promise history or completion missing: %s", after.Block)
 	}
+	// 1.4 (scene B): the promise line shows how it stands at this scene, not
+	// the status it was written with; before the closing turn it shows open
+	if l := lineOf(after, promise.ID); !strings.Contains(l, "status fulfilled") || strings.Contains(l, "status active") {
+		t.Fatalf("closed promise delivered without its closing status: %q", l)
+	}
+	if l := lineOf(before, promise.ID); !strings.Contains(l, "status active") {
+		t.Fatalf("open promise lost its status: %q", l)
+	}
 	known, err := db.CurrentKnown(s)
 	if err != nil {
 		t.Fatal(err)
@@ -74,6 +82,72 @@ func TestBaselinePromiseHistoryAndClosedCurrentFacts(t *testing.T) {
 	}
 	if obligations != 1 {
 		t.Fatalf("completion duplicated or deleted obligation history: %d", obligations)
+	}
+}
+
+// lineOf is the delivered line of record id ("" when it was not delivered).
+func lineOf(d Delivery, id string) string {
+	for i, x := range d.IDs {
+		if x == id && i < len(d.Lines) {
+			return d.Lines[i]
+		}
+	}
+	return ""
+}
+
+// 1.4: only a promise, goal or question shows the status a later effect
+// gave it; a boundary a later event marked keeps its own status line.
+func TestDeliverClosingStatusOnlyOnObligations(t *testing.T) {
+	db := testDB(t)
+	s := chatOf(t, [][2]string{
+		{"경계", "리나는 상처가 나을 때까지 아무도 자신을 만지지 말라고 했다."},
+		{"밤", "도윤이 리나의 어깨를 짚었다."},
+		{"아침", "아침을 먹었다."},
+	}, "리나는 도윤이 만지는 걸 허락했나?")
+	_, items, _ := a24Save(t, db, turnSource(s, 0), `{"entities":[{"id":"n1","name":"리나"},{"id":"n2","name":"도윤"}],"memories":[
+ {"id":"m1","kind":"fact","mode":"경계","about":"n1","body":"리나는 상처가 나을 때까지 아무도 자신을 만지지 말라고 했다.","status":"active"}]}`)
+	a24Save(t, db, turnSource(s, 1), fmt.Sprintf(`{"memories":[{"id":"m1","kind":"event","body":"도윤이 리나의 어깨를 짚었다.","roles":{"actor":[%q],"target":[%q]},"outcome":"success","effects":[{"about":%q,"status":"missed"}]}]}`, items.Names[1].ID, items.Names[0].ID, items.Memories[0].ID))
+	d, err := db.Deliver(memory.ScopeOf(s), DeliveryRequest{Input: "리나는 상처가 나을 때까지 만지지 말라고 했다. 도윤이 어깨를 짚었다.", Payload: printsOf(turnSource(s, 2)), Chars: 2000, Secret: 4000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := lineOf(d, items.Memories[0].ID)
+	if l == "" {
+		t.Fatalf("fixture: the boundary was not delivered: %s", d.Block)
+	}
+	if !strings.Contains(l, "status active") || strings.Contains(l, "status missed") {
+		t.Fatalf("a boundary took a later effect's status: %q", l)
+	}
+}
+
+// 1.4: a promise closed by a secret event shows its closing status with
+// that event's protection, not as a public line.
+func TestDeliverClosingStatusKeepsEffectProtection(t *testing.T) {
+	db := testDB(t)
+	s := chatOf(t, [][2]string{
+		{"약속", "리나는 도윤에게 수로 지도를 그려 주겠다고 했다."},
+		{"밤", "리나는 서진 몰래 지도를 도윤에게 건넸다."},
+		{"아침", "아침을 먹었다."},
+	}, "리나가 도윤에게 약속한 수로 지도는?")
+	_, items, _ := a24Save(t, db, turnSource(s, 0), `{"entities":[{"id":"n1","name":"리나"},{"id":"n2","name":"도윤"},{"id":"n3","name":"서진"}],"memories":[
+ {"id":"m1","kind":"fact","mode":"의무","about":"n1","to":"n2","body":"리나는 도윤에게 수로 지도를 그려 주기로 약속했다.","status":"active"}]}`)
+	a24Save(t, db, turnSource(s, 1), fmt.Sprintf(`{"memories":[{"id":"m1","kind":"event","body":"리나가 서진 몰래 수로 지도를 도윤에게 건넸다.","roles":{"actor":[%q],"target":[%q]},"outcome":"success","effects":[{"about":%q,"status":"fulfilled"}]},{"ref":"m1.1","hide_from":[%q]}]}`, items.Names[0].ID, items.Names[1].ID, items.Memories[0].ID, items.Names[2].ID))
+	req := DeliveryRequest{Input: "리나가 서진 몰래 수로 지도를 도윤에게 건넸다. 그 지도를 펼쳐 본다.", Payload: printsOf(turnSource(s, 2)), Chars: 2000, Secret: 4000}
+	d, err := db.Deliver(memory.ScopeOf(s), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := lineOf(d, items.Memories[0].ID)
+	if !strings.Contains(l, "status fulfilled") || !strings.Contains(l, "hide from: 서진") || !d.SecretIDs[items.Memories[0].ID] {
+		t.Fatalf("closed promise without the closing effect's protection: %q (secret %v)", l, d.SecretIDs)
+	}
+	// with no secret room the fulfilment is not shown on a public line
+	req.Secret = 0
+	if d, err = db.Deliver(memory.ScopeOf(s), req); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(d.Block, "status fulfilled") {
+		t.Fatalf("a secret fulfilment shown in the memory lane: %s", d.Block)
 	}
 }
 

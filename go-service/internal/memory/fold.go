@@ -1,16 +1,34 @@
 package memory
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // IdentityMode is the fact mode of what someone or something is and stays
 // (true nature, group, role, an alias and whose it is). A state does not
 // replace it (1.3).
 const IdentityMode = "정체"
 
-// StateSlot is the slot of a subject's one current state (1.3). Only states
+// StateSlot is the slot of a subject's current state (1.3). Only states
 // written under it are replaced by the next one; states of other slots
-// (every state before 1.3) are left as they are.
+// (every state before 1.3) are left as they are. Since 1.4 a state is
+// written per aspect, "지금/위치", "지금/몸", "지금/차림·소지": a new state
+// replaces the subject's earlier state of the same aspect and an earlier
+// whole "지금" state; a whole "지금" state replaces every one (1.4: a whole
+// state replaced together lost what stayed, L-085's usual clothes).
 const StateSlot = "지금"
+
+// stateSlot tells a current-state slot, whole or one aspect.
+func stateSlot(s string) bool {
+	return s == StateSlot || strings.HasPrefix(s, StateSlot+"/")
+}
+
+// replacesState tells whether a new state under slot replaces an earlier
+// one under old (both state slots).
+func replacesState(slot, old string) bool {
+	return slot == StateSlot || old == StateSlot || slot == old
+}
 
 // PlaceSlot is the slot of an identity fact saying where a place is (1.3).
 const PlaceSlot = "위치"
@@ -144,28 +162,41 @@ func Fold(out Output, k Known) (Output, []string) {
 			continue
 		}
 		switch {
-		case m.Slot == StateSlot && m.Mode == "":
+		case stateSlot(m.Slot) && m.Mode == "":
 			out.Memories[i].Mode = "상태"
 		case m.Slot == PlaceSlot && (m.Mode == "" || m.Mode == PlaceSlot):
 			out.Memories[i].Mode = IdentityMode
 		}
 	}
-	// one current state per subject
-	var current map[string][]string // subject -> its current StateSlot states in k
+	// one current state per subject and aspect
+	type state struct{ id, slot string }
+	var current map[string][]state // subject -> its current states in k
+	earlier := map[string]string{} // subject + slot -> this answer's earlier state
 	for i, m := range out.Memories {
-		if m.Kind != "fact" || m.Mode != "상태" || m.Slot != StateSlot || m.About == "" {
+		if m.Kind != "fact" || m.Mode != "상태" || !stateSlot(m.Slot) || m.About == "" {
 			continue
 		}
+		// a second state of the same subject and slot in one answer replaces
+		// the first (1.4)
+		key := m.About + "|" + m.Slot
+		if id, ok := earlier[key]; ok && id != "" {
+			out.Memories[i].Was = append(append(Refs{}, out.Memories[i].Was...), id)
+		}
+		earlier[key] = m.ID
 		if current == nil {
-			current = map[string][]string{}
+			current = map[string][]state{}
 			sup := Superseded(k)
 			for _, km := range k.Memories {
-				if km.Kind == "fact" && km.Mode == "상태" && km.Slot == StateSlot && !sup[km.ID] {
-					current[km.About] = append(current[km.About], km.ID)
+				if km.Kind == "fact" && km.Mode == "상태" && stateSlot(km.Slot) && !sup[km.ID] {
+					current[km.About] = append(current[km.About], state{km.ID, km.Slot})
 				}
 			}
 		}
-		for _, id := range current[m.About] {
+		for _, st := range current[m.About] {
+			if !replacesState(m.Slot, st.slot) {
+				continue
+			}
+			id := st.id
 			named := false
 			for _, w := range m.Was {
 				named = named || w == id

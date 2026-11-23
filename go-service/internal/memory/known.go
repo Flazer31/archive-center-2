@@ -163,6 +163,13 @@ func replaced(k Known) (map[string]bool, map[string][]string) {
 				}
 				continue
 			}
+			// a state replaces the earlier state it names whole, whatever its
+			// aspect (1.4: two aspects naming one whole 지금 state left it
+			// current as changed in part)
+			if t := byID[w]; m.Kind == "fact" && m.Mode == "상태" && stateSlot(m.Slot) && t != nil && t.Kind == "fact" && t.Mode == "상태" && stateSlot(t.Slot) {
+				out[w] = true
+				continue
+			}
 			if m.Kind == "fact" && otherSlot(byID[w], m.Slot) {
 				part(w, m.Slot)
 				continue
@@ -228,28 +235,55 @@ func openObligation(m Memory) bool {
 	return true
 }
 
+// StatusEffect is the status the latest status effect gave a record and
+// the ref of that effect (record id + "." + its number).
+type StatusEffect struct {
+	Status string
+	Ref    string
+}
+
+// StatusEffects is, for each promise, shared goal and question (the
+// obligation modes), the latest status a status effect gave it, in turn
+// order: how a record a later turn closed stands now. CurrentFacts reads it
+// for eligibility; delivery shows it on the record's line with the
+// protection of the effect that set it (1.4: a closed promise was
+// delivered as active).
+func StatusEffects(k Known) map[string]StatusEffect {
+	mode := map[string]bool{}
+	for _, m := range k.Memories {
+		mode[m.ID] = obligationMode(m.Memory)
+	}
+	status := map[string]StatusEffect{}
+	byTurn := append([]KnownMemory(nil), k.Memories...)
+	sort.SliceStable(byTurn, func(i, j int) bool { return byTurn[i].Turn < byTurn[j].Turn })
+	for _, m := range byTurn {
+		for i, e := range m.Effects {
+			if e.Status != "" && mode[e.About] {
+				status[e.About] = StatusEffect{e.Status, m.ID + "." + strconv.Itoa(i+1)}
+			}
+		}
+	}
+	return status
+}
+
 // CurrentFacts lists the facts eligible for current-state reading. An
 // explicitly recalled old value still uses Select's separate recall path.
 // Returned records keep their stored text; effects decide eligibility only.
 func CurrentFacts(k Known) []KnownMemory {
 	sup := Superseded(k)
-	status := map[string]string{}
-	byTurn := append([]KnownMemory(nil), k.Memories...)
-	sort.SliceStable(byTurn, func(i, j int) bool { return byTurn[i].Turn < byTurn[j].Turn })
-	for _, m := range byTurn {
-		for _, e := range m.Effects {
-			if e.Status != "" {
-				status[e.About] = e.Status
-			}
-		}
-	}
+	status := StatusEffects(k)
 	var out []KnownMemory
 	for _, m := range k.Memories {
 		now := m.Memory
+		// a status effect "changed" ends it too: the closing rule offers it
+		// for a plan another replaced (1.4; it used to stay open for good).
+		// A record's own status "changed" (a revised promise) stays open.
+		ended := false
 		if st, ok := status[m.ID]; ok {
-			now.Status = st
+			now.Status = st.Status
+			ended = st.Status == "changed"
 		}
-		if m.Kind == "fact" && !sup[m.ID] && (!obligationMode(now) || openObligation(now)) {
+		if m.Kind == "fact" && !sup[m.ID] && (!obligationMode(now) || (openObligation(now) && !ended)) {
 			out = append(out, m)
 		}
 	}

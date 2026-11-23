@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"archivecenter2/goservice/internal/diagnostics"
+	"archivecenter2/goservice/internal/ingest"
 	"archivecenter2/goservice/internal/lifecycle"
 	"archivecenter2/goservice/internal/memory"
 	"archivecenter2/goservice/internal/observe"
@@ -41,6 +42,13 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 	// nothing to compare.
 	var prevMu sync.Mutex
 	prevRequest := map[string][]store.TextPrint{}
+	// each chat's last answer, kept for the host sending the same request
+	// again (1.4 I081): RisuAI calls the request hook once per provider
+	// retry, and the plugin then finds its own block already in the
+	// request. Such a resend at the same turn and input gets the same answer
+	// without choosing or calling the publisher again; anything else is
+	// answered as before. Kept with prevRequest, for the same chats.
+	lastAnswer := map[string]sentAnswer{}
 	var prevOrder []string // chats, least recently used first
 	comparePrefix := func(chat string, payload []store.TextPrint) *store.RequestPrefix {
 		cur := make([]store.TextPrint, len(payload))
@@ -57,6 +65,7 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 		prevOrder = append(prevOrder, chat)
 		for len(prevOrder) > injectionsKept {
 			delete(prevRequest, prevOrder[0])
+			delete(lastAnswer, prevOrder[0])
 			prevOrder = prevOrder[1:]
 		}
 		if !ok {
@@ -92,7 +101,8 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 			Payload           []store.TextPrint       `json:"payload"`
 			Observation       *observe.Batch          `json:"observation"`
 			PlacementMessages []memory.PayloadMessage `json:"placement_messages"`
-			Type              string                  `json:"type"` // the host's request type
+			Type              string                  `json:"type"`        // the host's request type
+			HandedBack        []string                `json:"handed_back"` // fingerprints of this plugin's messages the request came back with
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ChatID == "" {
 			http.Error(w, "chat_id required", http.StatusBadRequest)
@@ -136,15 +146,11 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 				locator = &store.DeliveryLocator{TurnID: last.ID, Turn: len(turns), SourceKey: memory.SourceOf(s.Key, last).Key()}
 			}
 		}); err != nil {
+			log.Printf("memory delivery: chat %s failed at session: %s", req.ChatID, diagnostics.ErrorSummary(err.Error()))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		step("session")
-		chars, secret, err := db.MemoryBudgets()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
 		// the input is the host's own row of this turn: a preset can put more
 		// user-role prompt parts after it, so the request's last user message
 		// is not always what the user wrote (2026-10-29: a 545-char preset part
@@ -152,6 +158,53 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 		input := req.Input
 		if t := currentInput(scope); t != "" {
 			input = t
+		}
+		// the same request sent again by the host (1.4 I081). When it came
+		// back with the very messages of the answer kept for this chat (its
+		// block or PDF parts, guide and improved input), at the same turn and
+		// input, that answer goes again, placed in this request as it is now
+		// and without its input improvement (the request holds it); any other
+		// request is answered anew, as is one whose observation had something
+		// to tell (texts to resend, an observation not applied). This is no
+		// gate: not reusing only means choosing as before.
+		handedBack := len(req.HandedBack) > 0
+		// a request holding this turn's input as this plugin improved it
+		// gets no other improvement over it
+		_, inputPrint := ingest.Fingerprint(input)
+		var heldRewrite []string
+		for _, h := range req.HandedBack {
+			if strings.HasPrefix(h, rewritePrint) && strings.HasSuffix(h, ":"+inputPrint) {
+				heldRewrite = append(heldRewrite, h)
+			}
+		}
+		holdsRewrite := len(heldRewrite) > 0
+		at := ""
+		if locator != nil {
+			at = fmt.Sprintf("%d\x00%s", locator.TurnID, locator.SourceKey)
+		}
+		at += "\x00" + input
+		if handedBack && !resend && applyWarning == "" {
+			prevMu.Lock()
+			a, ok := lastAnswer[req.ChatID]
+			prevMu.Unlock()
+			back := sortedCopy(req.HandedBack)
+			if ok && a.at == at && slices.ContainsFunc(a.prints, func(p []string) bool { return slices.Equal(p, back) }) {
+				mode, marker, err := db.MemoryPlacement()
+				if err != nil {
+					storeFailed(w, 500, err)
+					return
+				}
+				log.Printf("memory delivery: chat %s: the host sent the same request again; the previous answer goes again", req.ChatID)
+				w.Header().Set("Content-Type", "application/json")
+				w.Write(a.again(memory.ResolvePlacement(req.PlacementMessages, mode, marker), marker))
+				return
+			}
+		}
+		chars, secret, err := db.MemoryBudgets()
+		if err != nil {
+			log.Printf("memory delivery: chat %s failed at budgets: %s", req.ChatID, diagnostics.ErrorSummary(err.Error()))
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		dr := store.DeliveryRequest{Input: input, Payload: req.Payload, Chars: chars, Secret: secret}
 		warning := ""
@@ -195,6 +248,7 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 		step("body")
 		d, err := db.Deliver(scope, dr)
 		if err != nil {
+			log.Printf("memory delivery: chat %s failed at select: %s", req.ChatID, diagnostics.ErrorSummary(err.Error()))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -221,6 +275,11 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 			n, problem := st.mods.narrativeFor()
 			switch {
 			case n != nil:
+				if holdsRewrite {
+					own := *n
+					own.s.Input = store.InputOff
+					n = &own
+				}
 				guide, rewrite, narr = narrative(within, n, d, scope, input, started)
 			case problem != "":
 				narr = &store.NarrativeRecord{Guide: problem}
@@ -288,24 +347,134 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 			}
 			st.mu.Unlock()
 		}
+		ans := injectAnswer{d, deliveryID, warning, applyWarning, resend, embedMS, total, stages, placement, transport, marker, prep, guideOrNil(guide), rewrite}
+		body, err := json.Marshal(ans)
+		if err != nil {
+			storeFailed(w, 500, err)
+			return
+		}
+		body = append(body, '\n')
+		prevMu.Lock()
+		if _, kept := prevRequest[req.ChatID]; kept {
+			prints := ans.prints()
+			if rewrite == nil && holdsRewrite {
+				// made anew for a request holding an improved input: that
+				// input stays in the request, so its print is this answer's
+				for i, p := range prints {
+					prints[i] = sortedCopy(append(p, heldRewrite...))
+				}
+			}
+			lastAnswer[req.ChatID] = sentAnswer{at: at, prints: prints, body: body}
+		}
+		prevMu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(struct {
-			store.Delivery
-			DeliveryID  int64                   `json:"delivery_id,omitempty"`
-			Warning     string                  `json:"warning,omitempty"`
-			Observation string                  `json:"observation,omitempty"`
-			ResendText  bool                    `json:"resend_text,omitempty"` // as /observe: texts sent as fingerprints only are not known
-			EmbedMS     int64                   `json:"embed_ms"`
-			TotalMS     int64                   `json:"total_ms"`
-			Stages      []store.DeliveryStage   `json:"stages"`
-			Placement   memory.Placement        `json:"placement"`
-			Transport   *memoryTransport        `json:"transport,omitempty"`
-			Anchor      string                  `json:"anchor"` // the marker the plugin looks for in the next request
-			Preprocess  *store.PreprocessRecord `json:"preprocess,omitempty"`
-			Guide       *narrGuide              `json:"guide,omitempty"`
-			Input       *inputRewrite           `json:"input_rewrite,omitempty"`
-		}{d, deliveryID, warning, applyWarning, resend, embedMS, total, stages, placement, transport, marker, prep, guideOrNil(guide), rewrite})
+		w.Write(body)
 	}
+}
+
+// injectAnswer is the /memory/inject answer to a main-model request.
+type injectAnswer struct {
+	store.Delivery
+	DeliveryID  int64                   `json:"delivery_id,omitempty"`
+	Warning     string                  `json:"warning,omitempty"`
+	Observation string                  `json:"observation,omitempty"`
+	ResendText  bool                    `json:"resend_text,omitempty"` // as /observe: texts sent as fingerprints only are not known
+	EmbedMS     int64                   `json:"embed_ms"`
+	TotalMS     int64                   `json:"total_ms"`
+	Stages      []store.DeliveryStage   `json:"stages"`
+	Placement   memory.Placement        `json:"placement"`
+	Transport   *memoryTransport        `json:"transport,omitempty"`
+	Anchor      string                  `json:"anchor"` // the marker the plugin looks for in the next request
+	Preprocess  *store.PreprocessRecord `json:"preprocess,omitempty"`
+	Guide       *narrGuide              `json:"guide,omitempty"`
+	Input       *inputRewrite           `json:"input_rewrite,omitempty"`
+}
+
+// prints are the fingerprints in the title lines of the messages this
+// answer can put in a request, each list sorted: the plugin sends them back
+// when the host hands the request in again. The memory goes as the block or,
+// in a PDF mode, as the PDF part and the part kept as text; which one the
+// plugin used is its own (a PDF hook may be missing), so both are listed.
+func (a injectAnswer) prints() [][]string {
+	var guide []string
+	if a.Guide != nil {
+		for _, text := range []string{a.Guide.AfterMemory, a.Guide.BeforeReply} {
+			if h := titlePrint(text, store.GuideTitle); h != "" {
+				guide = append(guide, h)
+			}
+		}
+	}
+	memories := [][]string{titlePrints(a.Block)}
+	if t := a.Transport; t != nil && t.Mode != "text" {
+		memories = append(memories, titlePrints(t.PDFText, t.RetainedText))
+	}
+	if a.Input != nil && a.Input.To != "" {
+		_, to := ingest.Fingerprint(a.Input.To)
+		_, from := ingest.Fingerprint(a.Input.From)
+		guide = append(guide, rewritePrint+to+":"+from)
+	}
+	var out [][]string
+	for _, m := range memories {
+		out = append(out, sortedCopy(append(m, guide...)))
+	}
+	return out
+}
+
+// rewritePrint opens the print the plugin sends for an improved input it
+// finds in a request: "rw:<improved text's fingerprint>:<the text it
+// improved's fingerprint>".
+const rewritePrint = "rw:"
+
+// titlePrints are the fingerprints of the memory texts that hold one.
+func titlePrints(texts ...string) []string {
+	var out []string
+	for _, text := range texts {
+		if h := titlePrint(text, store.BlockTitle); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+func sortedCopy(s []string) []string {
+	c := slices.Clone(s)
+	slices.Sort(c)
+	return c
+}
+
+// titlePrint is the fingerprint a titled message's first line ends with.
+func titlePrint(text, title string) string {
+	line, _, _ := strings.Cut(text, "\n")
+	if !strings.HasPrefix(line, title) || !strings.HasSuffix(line, "]") {
+		return ""
+	}
+	return line[len(title) : len(line)-1]
+}
+
+// sentAnswer is a chat's last /memory/inject answer as sent, the turn and
+// input it was made for, and its messages' fingerprints (1.4 I081).
+type sentAnswer struct {
+	at     string
+	prints [][]string
+	body   []byte
+}
+
+// again is the kept answer for a resent request: placed in that request,
+// with the marker set now, and without an input improvement (the request
+// holds it already).
+func (a sentAnswer) again(p memory.Placement, marker string) []byte {
+	var v map[string]json.RawMessage
+	if err := json.Unmarshal(a.body, &v); err != nil {
+		return a.body
+	}
+	v["placement"], _ = json.Marshal(p)
+	v["anchor"], _ = json.Marshal(marker)
+	delete(v, "input_rewrite")
+	out, err := json.Marshal(v)
+	if err != nil {
+		return a.body
+	}
+	return append(out, '\n')
 }
 
 // prefixText is the log form of the comparison with the previous request.

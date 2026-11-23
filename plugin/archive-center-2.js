@@ -1,7 +1,7 @@
 //@name archive_center_2
-//@display-name Archive Center 2 1.3.0
+//@display-name Archive Center 2 1.4.0
 //@api 3.0
-//@version 1.3.0
+//@version 1.4.0
 //@arg ac2_url string Backend URL until this device saves its own in the settings screen (default http://127.0.0.1:28190)
 //@arg ac2_token string Access token until this device saves its own (token.txt in the backend's shared data directory)
 //@arg ac2_hash_only int 1 = send only hash and length (no memories can be made), 0 = send message text (default)
@@ -10,7 +10,7 @@
 // the backend chooses into the request. It never changes the response or
 // the chat. Decisions belong to the backend.
 (async () => {
-  const PLUGIN_VERSION = "1.3.0";
+  const PLUGIN_VERSION = "1.4.0";
   const CONTRACT = "observation.v1";
   const FETCH_TIMEOUT_MS = 8000;
   const api = Risuai;
@@ -483,7 +483,9 @@
     if (!title) return false;
     const nl = text.indexOf("\n");
     if (nl < 1 || text[nl - 1] !== "]") return false;
-    return fingerprint(text.slice(nl + 1)).h === text.slice(title.length, nl - 1).replace(/ \| ac2-pdf:[a-z0-9-]+$/, "");
+    // its fingerprint (truthy) when it is this plugin's message
+    const h = text.slice(title.length, nl - 1).replace(/ \| ac2-pdf:[a-z0-9-]+$/, "");
+    return fingerprint(text.slice(nl + 1)).h === h ? h : false;
   }
 
   // Only the provider body exposes the final parts (Google, or OpenAI-compatible
@@ -591,7 +593,14 @@
   // loading) no message is marked and the backend's fallback applies.
   let placementAnchor = "";
   let lastRewrite = null; // the last input rewrite applied here: { from, to, result }
-  async function deliver(messages, chatId, shape, capture, ev, type) {
+  // each chat's last few input improvements applied here, newest last:
+  // { from, to, result, at, back } (the improved message's place counted
+  // from the request's start and from its end: a resent request keeps one
+  // of them when messages are put at its start, by a request trigger, or at
+  // its end, by a later plugin); for the last 50 chats a main request went
+  // for (as the backend keeps its answers)
+  const chatRewrites = new Map();
+  async function deliver(messages, chatId, shape, capture, ev, type, handedBack) {
     if (!Array.isArray(messages) || chatId === null || chatId === undefined) return messages;
     const anchor = placementAnchor;
     let at = messages.length;
@@ -613,7 +622,7 @@
       // with text capture on, each message's text goes along: the backend
       // reads in it whether a recent turn's text reached the request whole
       // (a host regex can cut a reply on the way); it is not stored
-      body: JSON.stringify({ chat_id: String(chatId), type: type ?? "", input: capture ? wellFormed(input) : "",
+      body: JSON.stringify({ chat_id: String(chatId), type: type ?? "", input: capture ? wellFormed(input) : "", handed_back: handedBack || [],
         payload: shape.map((m) => ({ ...m.content, role: m.role, ...(capture && messages[m.i] && typeof messages[m.i].content === "string" ? { text: wellFormed(messages[m.i].content) } : {}) })), observation: unsentThrough(ev),
         placement_messages: messages.map((m) => ({ role: m && m.role, marker: !!anchor && !!m && typeof m.content === "string" && m.content.includes(anchor), cachePoint: m && m.cachePoint, cache_control: m && m.cache_control, isCache: m && m.isCache })) }),
     });
@@ -650,6 +659,10 @@
         messages = messages.slice();
         messages[i] = { ...m, content: m.content.slice(0, k) + rw.to + m.content.slice(k + rw.from.length) };
         lastRewrite = { from: rw.from, to: rw.to, result: messages[i].content };
+        const own = chatRewrites.get(String(chatId)) || [];
+        chatRewrites.delete(String(chatId));
+        chatRewrites.set(String(chatId), [...own, { from: rw.from, to: rw.to, result: messages[i].content, at: i, back: messages.length - i }].slice(-4));
+        if (chatRewrites.size > 50) chatRewrites.delete(chatRewrites.keys().next().value);
       }
     }
     const tail = typeof guide.before_reply === "string" && guide.before_reply ? [{ role: "system", content: guide.before_reply }] : [];
@@ -684,12 +697,18 @@
   }
 
   const onBeforeRequest = async (messages, type) => {
+    // the host sends a request again (a provider retry) with this plugin's
+    // messages still in it: their fingerprints go to the backend
+    const handedBack = [];
     if (Array.isArray(messages) && messages.some(isDelivered)) messages = messages.filter((m) => {
-      if (!isDelivered(m)) return true;
+      const h = isDelivered(m);
+      if (!h) return true;
+      if (typeof h === "string") handedBack.push(h);
       const header = m.content.slice(0, m.content.indexOf("\n") + 1);
       for (const match of header.matchAll(PDF_TOKEN)) pdfRequests.delete(match[2]);
       return false;
     });
+    // and with an input this plugin improved: the improvement's fingerprint goes too
     let ev = null;
     let chatId = null;
     let shape = [];
@@ -724,7 +743,29 @@
       console.warn("[AC2] beforeRequest observe failed", e);
     }
     try {
-      return await deliver(messages, chatId, shape, capture, ev, type);
+      // and with this turn's input as this plugin improved it in this chat:
+      // the improvement's fingerprint goes too (a message at the place it was
+      // applied, counted from the start or from the end, holding its result)
+      if (Array.isArray(messages) && chatId !== null && chatId !== undefined) {
+        const own = chatRewrites.get(String(chatId));
+        if (own && (type == null || type === "" || type === "model")) { // a main request: the chat is used last
+          chatRewrites.delete(String(chatId));
+          chatRewrites.set(String(chatId), own);
+        }
+        // (this turn only: no reply followed by another user message after it;
+        // an assistant message at the end, a prefill, does not end the turn)
+        let lastUser = -1;
+        for (let k = 0; k < messages.length; k++) if (messages[k] && messages[k].role === "user") lastUser = k;
+        let replyBefore = -1; // the last assistant message before the last user message
+        for (let k = lastUser - 1; k >= 0; k--) if (messages[k] && messages[k].role === "assistant") { replyBefore = k; break; }
+        const rewritten = [...(chatRewrites.get(String(chatId)) || [])].reverse().find((r) => {
+          const holds = (k) => k > replyBefore && !!messages[k] && messages[k].role === "user" && messages[k].content === r.result;
+          return holds(r.at) || holds(messages.length - r.back);
+        });
+        // with the text it improved: the backend knows it for this turn's input
+        if (rewritten) handedBack.push("rw:" + fingerprint(rewritten.to).h + ":" + fingerprint(rewritten.from).h);
+      }
+      return await deliver(messages, chatId, shape, capture, ev, type, handedBack);
     } catch (e) { recordPluginError(e);
       console.warn("[AC2] memory delivery failed", e);
       return messages;
@@ -1194,6 +1235,7 @@
     for (const i of [mem, sec]) i.addEventListener("input", () => status.clear());
     body.append(
       el("div", { class: "ac2-help" }, "두 예산은 따로 계산되는 상한입니다. 비밀 기억은 비밀 예산으로만 들어갑니다."),
+      el("div", { class: "ac2-help" }, "추천: 기억 예산은 기본 2,000자로 시작하세요. 긴 채팅에서 옛 기억이 자주 빠진다고 느낄 때만 3,000자까지 올려 보세요. 그보다 크게 잡으면 필요 없는 기억이 더 많이 들어가요."),
       el("div", { class: "ac2-grid" },
         el("div", { class: "ac2-box" }, el("label", { class: "ac2-label", for: "ac2-mem" }, "기억 예산 (글자)"), mem),
         el("div", { class: "ac2-box" }, el("label", { class: "ac2-label", for: "ac2-sec" }, "비밀 예산 (글자)"), sec)),
@@ -3396,11 +3438,19 @@
     if (!t) return older || ["확인 중", "gray"];
     const g = (t.stages || []).find((s) => s.key === "generation") || {};
     if (older && (g.state === "done" || g.state === "off" || !g.state)) return older;
+    // the latest reply, stored and not yet confirmed, is made into memory when
+    // the next input comes (1.4 I255): told once nothing earlier is under way
+    const stage = (turn, key) => ((turn && turn.stages) || []).find((s) => s.key === key) || {};
+    const pending = stage(turns[0], "response_saved").state === "done" && stage(turns[0], "confirmed").state !== "done"
+      && stage(turns[0], "generation").state === "waiting" && !turns[0].retried; // its memory not made (nor off) yet
+    const NEXT_INPUT = ["다음 입력 때 저장", "gray"];
+    if (pending && t === turns[0] && g.state === "waiting" && !t.retried) return NEXT_INPUT;
     // a retry is told from its first call too
     if (g.state === "running") return [t.retried ? "다시 시도 중 " + t.attempt + "/" + t.attempts : "만드는 중", "run"];
     if (g.state === "waiting") return [t.retried ? "다시 시도 요청함" : "기다리는 중", "run"];
     if (g.state === "retry_waiting") return [t.turn + "턴 실패 · 곧 다시", "bad"];
     if (g.state === "failed") return [t.turn + "턴 실패", "bad"];
+    if (pending && (g.state === "done" || g.state === "off" || !g.state)) return NEXT_INPUT;
     if (g.state === "done") return [(g.count || 0) + "개 저장", "acc"];
     if (g.state === "off") return ["기억 안 함", "gray"];
     return ["확인 중", "gray"];
@@ -3566,7 +3616,6 @@
         const head = await add(panel, "div", null, "display:flex;align-items:center;gap:8px");
         await add(head, "div", "AC2 기억 처리", "flex:1;font-weight:600;font-size:13px");
         const x = await add(head, "button", "×", BTN + ";min-width:28px;min-height:28px;padding:0;font-size:15px");
-        await x.setAttribute("aria-label", "닫기");
         await click(x, async () => { ui.dismissed = true; await render(); });
         const RED = "background:rgba(197,48,48,.12);color:#C53030;border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:3px";
         // a failure stands out with what happened and a retry where it shows

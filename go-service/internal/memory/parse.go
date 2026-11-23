@@ -64,6 +64,11 @@ func Parse(raw string) (Output, []string) {
 	case obj != nil && unfinished < end:
 		var out Output
 		var moved int
+		read := false
+		if joined, ok := closedEarly(obj, raw[end:]); ok {
+			obj, read = joined, true
+			notes = append(notes, "text after the response object was read as its rest (closed early)")
+		}
 		obj, moved = moveMemories(obj)
 		if moved > 0 {
 			notes = append(notes, fmt.Sprintf("entities: %d memory item(s) were read as memories", moved))
@@ -77,7 +82,7 @@ func Parse(raw string) (Output, []string) {
 			notes = append(notes, fmt.Sprintf("memories: %d place(s) written beside roles were read as roles.place", moved))
 		}
 		err := json.Unmarshal(obj, &out)
-		if strings.Contains(raw[end:], "{") {
+		if !read && strings.Contains(raw[end:], "{") {
 			// e.g. an item written after the object closed
 			notes = append(notes, "text after the response object was not read")
 		}
@@ -119,6 +124,38 @@ func Damaged(out Output, notes []string) bool {
 		}
 	}
 	return false
+}
+
+// closedEarly reads text after a response object that only goes on from
+// it: the model closed the object too early and wrote its remaining keys
+// after a comma (11-19 L T117: ',"scenes":[...],"links":[...]}'). That text
+// is read as an object of its own and joined only when every key in it is
+// new (one the first object does not have); otherwise nothing changes.
+// Items written after a closed array (T126) are not read: the array they
+// belong to is not known.
+func closedEarly(obj json.RawMessage, after string) (json.RawMessage, bool) {
+	tail := strings.TrimSpace(after)
+	tail = strings.TrimSpace(strings.TrimSuffix(tail, "```"))
+	if !strings.HasPrefix(tail, ",") || !strings.HasSuffix(tail, "}") {
+		return nil, false
+	}
+	var first, rest map[string]json.RawMessage
+	if json.Unmarshal(obj, &first) != nil || json.Unmarshal([]byte("{"+tail[1:]), &rest) != nil || len(rest) == 0 {
+		return nil, false
+	}
+	for k := range rest {
+		if _, ok := first[k]; ok {
+			return nil, false
+		}
+	}
+	for k, v := range rest {
+		first[k] = v
+	}
+	b, err := json.Marshal(first)
+	if err != nil {
+		return nil, false
+	}
+	return b, true
 }
 
 var responseArrays = []string{"entities", "memories", "scenes", "links", "body_events", "boundaries", "closed"}

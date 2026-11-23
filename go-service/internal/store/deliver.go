@@ -220,6 +220,10 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	sel := memory.Select(k, text, earlier)
 	sup := memory.Superseded(k)
 	kept := memory.KeptEvents(k)
+	// a promise, goal or question a later status effect closed is shown
+	// with that status (its stored text says what it was when written, 1.4
+	// scene B), and with the protection of the effect that closed it
+	closed := memory.StatusEffects(k)
 	// a fact later records changed in part is delivered with the slots
 	// they changed, so its earlier values of those are not read as current:
 	// Select sets them on what it selects; the pinned and completing records
@@ -613,6 +617,10 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			own, up = protectBelow(c.id, own, false)
 			inherited = inherited || up
 		}
+		closedBy, isClosed := closed[c.id]
+		if isClosed {
+			own, isSecret = protect(carried[closedBy.Ref], own, isSecret)
+		}
 		basis, newMark, sourceAdded := "", "", 0
 		if bs := c.mem.Basis; bs != nil && bodies[bs.Ref] != "" {
 			own, isSecret = protect(carried[bs.Ref], own, isSecret)
@@ -632,6 +640,9 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 		}
 		own = distinctAwareness(own)
 		shown := withoutRepeatedRoles(currentValues(*c.mem, kept, sup), names)
+		if isClosed {
+			shown.Status = closedBy.Status
+		}
 		line := deliveryLine(shown, names, basis, own)
 		full := memory.RenderKnown(memory.Selection{Memories: []memory.KnownMemory{shown}, Awareness: own}, sup)
 		size := lineSize(line) // the general lane counts the line sent

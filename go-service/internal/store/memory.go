@@ -454,6 +454,17 @@ func (d *DB) saveGeneration(j Job, g Generation) (notes []string, err error) {
 		g.Model, g.Request, g.ReadItems, g.Response, strings.Join(notes, "\n"), time.Now().UTC(), int64(days), storyDate, j.ID); err != nil {
 		return nil, err
 	}
+	// an answer that comes after its reply was dropped (a reroll or an edit
+	// while the call was under way) keeps no copy of it either (1.4)
+	if droppedSource(src) {
+		keep, err := heldBy(tx, j.Session)
+		if err != nil {
+			return nil, err
+		}
+		if err := scrubJob(tx, j.ID, keep); err != nil {
+			return nil, err
+		}
+	}
 	return notes, tx.Commit()
 }
 
