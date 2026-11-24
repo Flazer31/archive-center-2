@@ -26,24 +26,34 @@ func assertTransportLines(t *testing.T, d Delivery) {
 	sameRecords(t, "secret", d.RetainedBlock, append(append([]string{}, d.SecretNames...), secret...))
 }
 
-// sentLines reads a delivered block back into whole lines: a line under a
-// "[for the lines below]" header gets the header's awareness.
-func sentLines(block string) []string {
+type sentRecord struct {
+	line, groupBodies string
+}
+
+// A grouped line gets its header's awareness and its group's displayed bodies.
+func sentLines(block string) []sentRecord {
 	if block == "" {
 		return nil
 	}
-	var out []string
-	shared := ""
-	for _, l := range strings.Split(strings.TrimSuffix(block, "\n"), "\n")[1:] {
-		switch {
-		case strings.HasPrefix(l, "- [for the lines below] "):
-			shared = strings.TrimPrefix(l, "- [for the lines below] ")
-		case strings.HasPrefix(l, "  - ") && shared != "":
-			out = append(out, l[2:]+" | "+shared)
-		default:
-			shared = ""
-			out = append(out, l)
+	var out []sentRecord
+	lines := strings.Split(strings.TrimSuffix(block, "\n"), "\n")[1:]
+	for len(lines) > 0 {
+		line := lines[0]
+		lines = lines[1:]
+		header, grouped := strings.CutPrefix(line, "- [for the lines below] ")
+		if !grouped {
+			out = append(out, sentRecord{line: line})
+			continue
 		}
+		n := 0
+		for n < len(lines) && strings.HasPrefix(lines[n], "  - ") {
+			n++
+		}
+		bodies := strings.Join(lines[:n], "\n")
+		for _, member := range lines[:n] {
+			out = append(out, sentRecord{member[2:] + " | " + header, bodies})
+		}
+		lines = lines[n:]
 	}
 	return out
 }
@@ -52,13 +62,17 @@ func sentLines(block string) []string {
 // people it names.
 func awarenessCut(l string) (string, []string) {
 	cut := len(l)
-	for _, k := range []string{" | knows: ", " | unaware: ", " | hide from: ", " | allow to: "} {
+	for _, k := range []string{" | knows: ", " | unaware: ", " | hide from: ", " | unaware, hide from: ", " | allow to: ", " | knows at T", " | unaware at T"} {
 		if i := strings.Index(l, k); i >= 0 && i < cut {
 			cut = i
 		}
 	}
 	var who []string
 	for _, part := range strings.Split(l[cut:], " | ") {
+		if people, subject, ok := strings.Cut(part, " (what: "); ok {
+			who = append(who, "what: "+subject)
+			part = people
+		}
 		if _, rest, ok := strings.Cut(part, ": "); ok {
 			for _, w := range strings.Split(rest, ", ") {
 				who = append(who, strings.TrimSpace(w))
@@ -81,14 +95,20 @@ func sameRecords(t *testing.T, lane, block string, want []string) {
 		wb, ww := awarenessCut(w)
 		found := false
 		for j, g := range got {
-			gb, gw := awarenessCut(g)
+			gb, gw := awarenessCut(g.line)
 			if used[j] || gb != wb {
 				continue
 			}
 			for _, x := range ww {
-				if !slices.Contains(gw, x) {
-					t.Fatalf("%s lane lost %q on %q", lane, x, g)
+				if slices.Contains(gw, x) {
+					continue
 				}
+				// A shared header can leave its subject to the records under it.
+				// Every expected person still has to appear in the awareness.
+				if subject, ok := strings.CutPrefix(x, "what: "); ok && strings.Contains(g.groupBodies, strings.TrimSuffix(subject, ")")) {
+					continue
+				}
+				t.Fatalf("%s lane lost %q on %q", lane, x, g.line)
 			}
 			used[j], found = true, true
 			break

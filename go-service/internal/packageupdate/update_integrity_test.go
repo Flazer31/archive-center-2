@@ -119,7 +119,6 @@ func TestManifestIntegrityMutationDuringApplyRollsBack(t *testing.T) {
 		t.Run(mutation, func(t *testing.T) {
 			root, original, next := newIntegrityFixture(t)
 			stageIntegrityCandidate(t, root, next, nil)
-			pending := mustPending(t, root)
 			mutated := false
 			_, err := applyPending(root, "", func(rel string, _ int) error {
 				if rel != "scripts/z-start.ps1" {
@@ -150,9 +149,16 @@ func TestManifestIntegrityMutationDuringApplyRollsBack(t *testing.T) {
 				t.Fatalf("missing mismatch path: %v", err)
 			}
 			assertIntegrityRolledBack(t, root)
-			assertIntegrityPending(t, root, pending)
 			if _, err := os.Stat(filepath.Join(root, "scripts/z-start.ps1.update-tmp")); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("mismatched temporary copy remains: %v", err)
+			}
+			if restarted, err := ApplyPending(root); err != nil || restarted.Status != "no_pending" {
+				t.Fatalf("restart retried rolled-back apply: %+v, %v", restarted, err)
+			}
+			assertIntegrityInstallation(t, root, original)
+			stageIntegrityCandidate(t, root, next, nil)
+			if retried, err := ApplyPending(root); err != nil || !retried.HealthRequired {
+				t.Fatalf("explicit restage could not apply same version: %+v, %v", retried, err)
 			}
 		})
 	}

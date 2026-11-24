@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -172,7 +173,7 @@ func hypaHandler(pipe *pipeline.Pipeline, worker *generate.Worker, db *store.DB,
 		if err := pipe.WithSession(key, func(s *lifecycle.Session) {
 			asked, berr = worker.Backfill(key, memory.WithPast(s), 0, false)
 		}); err != nil || berr != nil {
-			storeFailed(w, http.StatusInternalServerError, err)
+			storeFailed(w, http.StatusInternalServerError, errors.Join(err, berr))
 			return
 		}
 		// attached first: the summaries are the oldest story; a chat
@@ -220,7 +221,7 @@ func hypaHandler(pipe *pipeline.Pipeline, worker *generate.Worker, db *store.DB,
 		}
 		err := worker.WithChatOperation(locked)
 		if err != nil || attachErr != nil {
-			storeFailed(w, http.StatusInternalServerError, err)
+			storeFailed(w, http.StatusInternalServerError, errors.Join(err, attachErr))
 			return
 		}
 		answer["turns"] = asked

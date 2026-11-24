@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestApplyPendingNoPendingIsNoOp(t *testing.T) {
@@ -336,6 +337,60 @@ func TestApplyFailureRollsBackEveryTouchedFile(t *testing.T) {
 	if state := mustState(t, root); state.Status != "rolled_back" {
 		t.Fatalf("state=%+v", state)
 	}
+}
+
+func TestApplyPendingOrdersNumberedPrereleases(t *testing.T) {
+	for _, tc := range []struct {
+		current, target string
+		newer           bool
+	}{
+		{"1.5.0-test.9", "1.5.0-test.10", true},
+		{"1.5.0-test.10", "1.5.0-test.9", false},
+	} {
+		t.Run(tc.current+"-to-"+tc.target, func(t *testing.T) {
+			root := t.TempDir()
+			const rel = "bin/app"
+			mustWrite(t, filepath.Join(root, rel), "installed")
+			writeManifest(t, filepath.Join(root, ManifestName), tc.current, map[string]string{rel: "installed"})
+			stagePending(t, root, tc.current, tc.target, map[string]string{rel: "candidate"})
+			result, err := ApplyPending(root)
+			if tc.newer {
+				if err != nil || !result.HealthRequired {
+					t.Fatalf("numbered upgrade: %+v, %v", result, err)
+				}
+				assertFile(t, filepath.Join(root, rel), "candidate")
+				return
+			}
+			if err == nil || result.HealthRequired {
+				t.Fatalf("numbered downgrade: %+v, %v", result, err)
+			}
+			assertFile(t, filepath.Join(root, rel), "installed")
+		})
+	}
+}
+
+func TestReplaceFileWaitsForHeldWindowsTarget(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows sharing semantics")
+	}
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "candidate"), filepath.Join(root, "installed")
+	mustWrite(t, src, "new")
+	mustWrite(t, dst, "old")
+	held, err := os.Open(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	released := time.AfterFunc(350*time.Millisecond, func() { held.Close() })
+	defer func() {
+		if released.Stop() {
+			held.Close()
+		}
+	}()
+	if err := replaceFile(src, dst, 0o600, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertFile(t, dst, "new")
 }
 
 func TestApplyRecoversInterruptedJournalBeforeRetry(t *testing.T) {

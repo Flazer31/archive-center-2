@@ -540,3 +540,38 @@ func TestDeliverBlockFingerprint(t *testing.T) {
 		t.Fatalf("title line %q for body %q", first, body)
 	}
 }
+
+// Removing a public basis makes a secret view quote it in full. The view
+// still fits, but its larger charge pushes the following event over budget.
+func TestDeliverCompletionAfterParentOverCeiling(t *testing.T) {
+	mem := []memory.Memory{
+		{Kind: "fact", Scene: "S1", About: "N1", Mode: "상태", Body: strings.Repeat("공개 근거 ", 45)},
+		{Kind: "view", Scene: "S1", Owner: "N1", Basis: &memory.Basis{Ref: "M1"}, Body: "기억", Awareness: memory.Awareness{HideFrom: memory.Who{"N1"}}},
+		{Kind: "event", Scene: "S1", Body: strings.Repeat("비밀 사건 ", 100), Awareness: memory.Awareness{HideFrom: memory.Who{"N1"}}},
+		{Kind: "fact", Scene: "S2", About: "N2", Mode: "상태", At: "M3", Body: "장부의 위치"},
+	}
+	f := &contrastFixture{memories: mem, vectors: map[int64][]float32{1: {0, 1}, 2: {1, 0}, 3: {1, 0}, 4: {1, 0}}}
+	db := fixtureDB(t, f)
+	req := syntheticRequest()
+	base := req
+	base.Query = nil
+	first, err := db.Deliver(syntheticScope(), base)
+	if err != nil || len(first.IDs) != len(mem) {
+		t.Fatalf("first delivery: %v, %v", first.Trace, err)
+	}
+	req.Secret = first.SecretChars
+	got, err := db.Deliver(syntheticScope(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := map[string]string{}
+	for _, row := range got.Trace {
+		result[row.ID] = row.Result
+	}
+	if result["M1"] != "contrast_removed" || result["M2"] != "taken" || result["M3"] != "over_ceiling" || result["M4"] != "taken" {
+		t.Fatalf("expected a surviving fact after its parent exceeded the second-pass budget: %+v", got.Trace)
+	}
+	if !got.SecretIDs["M4"] || !strings.Contains(lineOf(got, "M4"), "hide from: 대상") || strings.Contains(got.PDFBlock, mem[3].Body) || !strings.Contains(got.RetainedBlock, mem[3].Body) {
+		t.Fatalf("fact lost its parent's protection: %q, secret IDs %v", lineOf(got, "M4"), got.SecretIDs)
+	}
+}

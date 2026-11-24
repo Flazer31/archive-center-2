@@ -29,26 +29,34 @@ var (
 	dayN = regexp.MustCompile(`(?i)\bday (\d+)\b`)
 )
 
+// Allow a century of story days, including leap years. Cycle draws walk
+// from the reference day, so a model-supplied count must be finite in practice.
+const maxStoryDays = 100 * 366
+
+func storyDays(digits string) (int, bool) {
+	n, err := strconv.Atoi(digits)
+	return n, err == nil && n <= maxStoryDays
+}
+
 // DayOf reads a recorded date as AC2 writes it ("name = 2026/01/02",
 // "Day 12"): the first calendar date in it, else its Day N, else unknown.
 func DayOf(text string) Day {
 	if m := calendarDate.FindStringSubmatch(text); m != nil {
-		y, _ := strconv.Atoi(m[1])
-		mo, _ := strconv.Atoi(m[2])
-		d, _ := strconv.Atoi(m[3])
-		t := time.Date(y, time.Month(mo), d, 0, 0, 0, 0, time.UTC)
-		if t.Year() == y && int(t.Month()) == mo && t.Day() == d {
+		year := strings.Repeat("0", 4-len(m[1])) + m[1]
+		if t, err := time.Parse("2006/1/2", year+"/"+m[2]+"/"+m[3]); err == nil {
 			return Day{"calendar", int(t.Unix() / 86400)}
 		}
 	}
 	if m := dayN.FindStringSubmatch(text); m != nil {
-		n, _ := strconv.Atoi(m[1])
-		return Day{"day", n}
+		if n, ok := storyDays(m[1]); ok {
+			return Day{"day", n}
+		}
 	}
 	return Day{}
 }
 
 var relativeDays = regexp.MustCompile(`(?i)\b(\d+)\s+days?\s+(before|earlier|ago|after|later)\b`)
+var koreanRelativeDays = regexp.MustCompile(`\b(\d+)\s*일\s*(?:전|후)`)
 
 // EventDay is the day of a body event the critic recorded in a turn, on the
 // days Archive Center keeps (the story's dates must match the stored ones):
@@ -62,12 +70,22 @@ func EventDay(when string, turn Day) Day {
 		}
 	}
 	if m := relativeDays.FindStringSubmatch(when); m != nil && turn.Known() {
-		n, _ := strconv.Atoi(m[1])
+		n, ok := storyDays(m[1])
+		if !ok {
+			return Day{}
+		}
 		switch m[2] = strings.ToLower(m[2]); m[2] {
 		case "before", "earlier", "ago":
 			return Day{turn.Axis, turn.N - n}
 		default:
 			return Day{turn.Axis, turn.N + n}
+		}
+	}
+	// A Korean interval is outside the critic's date format. Preserve its
+	// turn-day fallback unless the stated interval is itself implausible.
+	if m := koreanRelativeDays.FindStringSubmatch(when); m != nil {
+		if _, ok := storyDays(m[1]); !ok {
+			return Day{}
 		}
 	}
 	return turn

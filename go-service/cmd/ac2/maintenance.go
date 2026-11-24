@@ -158,6 +158,10 @@ func (m *maintenance) reset(w http.ResponseWriter, r *http.Request) {
 			m.status.index, m.status.query = vectorPath{}, vectorPath{}
 			hud := m.status.hud
 			m.status.mu.Unlock()
+			history := &m.status.requests
+			history.mu.Lock()
+			history.chats, history.order = nil, nil
+			history.mu.Unlock()
 			if hud != nil {
 				hud.clear()
 			}

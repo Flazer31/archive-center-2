@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -148,6 +151,24 @@ func prepIDs(a memAnswer) []string {
 // decision model and the AI are fakes (recording, failing on request).
 // Expectations come from the off delivery's own order and sizes.
 func TestPreprocessModesThroughInject(t *testing.T) {
+	if raw := os.Getenv("AC2_TEST_RESTART_REUSED"); raw != "" {
+		want, err := strconv.Atoi(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db, err := store.Open(os.Getenv("AC2_TEST_MARIADB_DSN") + "ac2_test_models?parseTime=true")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		st := newStatus(db, nil, nil)
+		a := callMem(t, st.injectionHandler(), "GET", "/injection?chat_id=P", "")
+		pre, _ := a.V["preprocess"].(map[string]any)
+		if a.Code != 200 || pre["reused"] != float64(want) {
+			t.Fatalf("cold /injection reused = %v, want %d (HTTP %d)", pre["reused"], want, a.Code)
+		}
+		return
+	}
 	h := hudFixture(t, "", 0)
 	scope, _ := injectionSeed(t, h, "P")
 	bodies := []string{"리나는 약국에서 일한다", "리나는 낚시를 좋아한다", "리나는 약속을 해 지기 전에 지킨다", "리나는 도윤과 오래 알았다. " + strings.Repeat("함께 지낸 날들의 기록이 길다. ", 20)}
@@ -230,7 +251,7 @@ func TestPreprocessModesThroughInject(t *testing.T) {
 		t.Fatalf("jev requests (want the basic lines apart): %d %v", len(f.decRequests), f.decRequests)
 	}
 	pre := jev.V["preprocess"].(map[string]any)
-	if pre["ran"] != store.PreprocessJev || pre["removed"] != float64(1) || pre["added"] != float64(1) || pre["asked"] != float64(4) {
+	if pre["ran"] != store.PreprocessJev || pre["removed"] != float64(1) || pre["added"] != float64(1) || pre["asked"] != float64(4) || pre["reused"] != nil {
 		t.Fatalf("jev record: %v", pre)
 	}
 	stored := lastTrace(t, h, "P")
@@ -257,7 +278,7 @@ func TestPreprocessModesThroughInject(t *testing.T) {
 	}
 
 	// AI + JEV: left out only when both call it unrelated
-	f.reset()
+	f = newPrepFakes(t) // a cold endpoint, so both decisions are exercised
 	f.aiUnrelated[unrelated] = true
 	f.aiUnrelated[bodyOf(order[0])] = true // the AI alone: kept
 	f.decUnrelated[unrelated] = true
@@ -269,9 +290,26 @@ func TestPreprocessModesThroughInject(t *testing.T) {
 	if pre := both.V["preprocess"].(map[string]any); pre["ran"] != store.PreprocessAIJev || pre["removed"] != float64(1) {
 		t.Fatalf("ai+jev record: %v", pre)
 	}
+	repeat := injectionRequest(t, srv, h, "P")
+	pre = repeat.V["preprocess"].(map[string]any)
+	if repeat.V["block"] != both.V["block"] || pre["reused"] != float64(len(basic)) || pre["decision_calls"] != float64(0) || pre["input_tokens"] != float64(0) || f.decCalls != 1 || f.aiCalls != 2 {
+		t.Fatalf("repeat AI + JEV: %v, wire calls %d/%d", pre, f.decCalls, f.aiCalls)
+	}
+	if got := injectionGet(t, h, "P").V["preprocess"].(map[string]any)["reused"]; got != pre["reused"] {
+		t.Fatalf("management view reused %v, delivery reused %v", got, pre["reused"])
+	}
+	row := hudGet(t, h, "P")["turns"].([]any)[0].(map[string]any)
+	if got := row["injection"].(map[string]any)["preprocess"].(map[string]any)["reused"]; got != pre["reused"] {
+		t.Fatalf("HUD reused %v, delivery reused %v", got, pre["reused"])
+	}
+	child := exec.Command(os.Args[0], "-test.run=^TestPreprocessModesThroughInject$")
+	child.Env = append(os.Environ(), "AC2_TEST_RESTART_REUSED="+strconv.Itoa(len(basic)))
+	if out, err := child.CombinedOutput(); err != nil {
+		t.Fatalf("read persisted delivery in new process: %v\n%s", err, out)
+	}
 
 	// failures keep the basic delivery: JEV with the decision model down
-	f.reset()
+	f = newPrepFakes(t) // a cold endpoint that fails on the wire
 	f.decFail = true
 	prepSet(t, h, f, store.PreprocessJev)
 	down := injectionRequest(t, srv, h, "P")

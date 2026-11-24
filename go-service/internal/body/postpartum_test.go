@@ -119,3 +119,24 @@ func TestRecoveryInStoryOrder(t *testing.T) {
 		t.Fatalf("a new pregnancy kept the earlier birth's recovery: %+v", st.Tendency)
 	}
 }
+
+func TestNewPregnancyEndsRecoveryLine(t *testing.T) {
+	p := Person{Who: "N1", Spec: DefaultSpec()}
+	records := []Record{{ID: 1, Kind: "recovery_started", Day: day(1)}}
+	line := func(st State) string {
+		return strings.Join(Lines([]State{st}, func(id string) string { return id }), "\n")
+	}
+	before, _, _ := Assess(on, "seed", p, records, day(2))
+	if !strings.Contains(line(before), ": recovering") {
+		t.Fatalf("missing initial recovery: %s", line(before))
+	}
+	for _, next := range []Record{
+		{ID: 2, Kind: "pregnancy_confirmed", Day: day(10)},
+		{ID: 2, Kind: "conception_exposure", Day: day(10), Result: &Exposure{Status: "evaluated", Implanted: true, ExposureDay: 10, OvulationDay: 11, ImplantationDay: 18, BirthDay: 280}},
+	} {
+		st, _, _ := Assess(on, "seed", p, append(records, next), day(20))
+		if st.Pregnancy == nil || st.Recovery || st.Recovering != nil || strings.Contains(line(st), ": recovering") {
+			t.Errorf("%s after recovery: %s", next.Kind, line(st))
+		}
+	}
+}

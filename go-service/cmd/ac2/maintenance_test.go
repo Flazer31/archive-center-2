@@ -379,7 +379,7 @@ func TestMaintenanceResetAndFreshObservation(t *testing.T) {
 	}
 	f.m.server.Token = tok
 	f.m.status.workerEvent("index_failed", "chat:A", 0, fmt.Errorf("synthetic failure"))
-	f.m.status.injected("A", store.Delivery{}, "", 1, 1, 1, nil, false)
+	f.m.status.injected("A", store.Delivery{}, "", 1, 1, 1, nil, false, nil)
 	cold, clearCold := backfillHandlers(f.m.pipe, f.m.worker, f.m.db, f.m.server)
 	f.m.clearCold = clearCold
 	// A pending cold run and queue must not survive reset.

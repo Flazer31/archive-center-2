@@ -1,7 +1,8 @@
 //@name archive_center_2
-//@display-name Archive Center 2 1.4.0
+//@display-name Archive Center 2 1.5.0
 //@api 3.0
-//@version 1.4.0
+//@version 1.5.0
+//@update-url https://raw.githubusercontent.com/Flazer31/archive-center-2/main/plugin/archive-center-2.js
 //@arg ac2_url string Backend URL until this device saves its own in the settings screen (default http://127.0.0.1:28190)
 //@arg ac2_token string Access token until this device saves its own (token.txt in the backend's shared data directory)
 //@arg ac2_hash_only int 1 = send only hash and length (no memories can be made), 0 = send message text (default)
@@ -10,7 +11,7 @@
 // the backend chooses into the request. It never changes the response or
 // the chat. Decisions belong to the backend.
 (async () => {
-  const PLUGIN_VERSION = "1.4.0";
+  const PLUGIN_VERSION = "1.5.0";
   const CONTRACT = "observation.v1";
   const FETCH_TIMEOUT_MS = 8000;
   const api = Risuai;
@@ -642,11 +643,14 @@
     // goes after the memory and, at the strong level, last
     const rw = res.ok && res.json && res.json.input_rewrite;
     const guide = (res.ok && res.json && res.json.guide) || {};
-    // only this turn's user messages (after the last reply) are looked at, the
+    // only this turn's user messages (after the reply before the last user;
+    // trailing assistant prefills do not end the turn) are looked at, the
     // one that is the input itself first; a request handed back already holds
     // the improved text and is left as it is
     if (rw && typeof rw.from === "string" && rw.from && typeof rw.to === "string") {
-      let after = messages.length;
+      let lastUser = -1;
+      for (let k = 0; k < messages.length; k++) if (messages[k] && messages[k].role === "user") lastUser = k;
+      let after = lastUser;
       while (after > 0 && !(messages[after - 1] && messages[after - 1].role === "assistant")) after--;
       const turn = [];
       for (let i = after; i < messages.length; i++) if (messages[i] && messages[i].role === "user" && typeof messages[i].content === "string") turn.push(i);
@@ -2553,7 +2557,7 @@
     const load = async (reset) => {
       const mine = ++reads;
       msg.clear();
-      if (reset) { offset = 0; list.replaceChildren(); selected.clear(); if (!(activeBox && slot.children.includes(activeBox))) slot.replaceChildren(); lastGroup = null; groups.clear(); }
+      if (reset) { offset = 0; list.replaceChildren(); selected.clear(); if (!(activeBox && slot.contains(activeBox))) slot.replaceChildren(); lastGroup = null; groups.clear(); }
       drawBar();
       const q = encodeURIComponent(find.value.trim());
       const kind = memoryKind;
@@ -3511,9 +3515,11 @@
     const safe = (fn) => (...args) => Promise.resolve().then(() => fn(...args)).catch((e) => { recordPluginError(e); console.warn("[AC2] HUD", e); });
     const cancel = () => { if (ui.timer) clearTimeout(ui.timer); ui.timer = null; };
     const remove = async () => {
-      for (const [target, id, type] of ui.listeners) await target.removeEventListener(type || "click", id);
+      for (const [target, id, type] of ui.listeners) {
+        try { await target.removeEventListener(type || "click", id); } catch (e) { recordPluginError(e); }
+      }
       ui.listeners = [];
-      if (ui.root) await ui.root.remove();
+      if (ui.root) { try { await ui.root.remove(); } catch (e) { recordPluginError(e); } }
       ui.root = null;
     };
     const node = async (tag, text, style) => {

@@ -49,3 +49,16 @@ func TestPromptAsksAReplacementToCarryWhatStaysTrue(t *testing.T) {
 		t.Fatal("the carry instruction is not in the generation prompt")
 	}
 }
+
+func TestPromptRecordsWitnessesAndSecretViews(t *testing.T) {
+	p := PromptWithText(Source{Turn: 1}, "", Instructions, "x")
+	for _, rule := range []string{
+		`"seen_by" only people outside its roles whom the text shows seeing or hearing it`,
+		`a secret in THIS TURN or KNOWN, including a view that someone does not know it`,
+		`set "basis.ref" to the record that states the secret`,
+	} {
+		if !strings.Contains(p, rule) {
+			t.Errorf("generation prompt is missing %q", rule)
+		}
+	}
+}

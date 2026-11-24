@@ -135,6 +135,9 @@ func startManaged(root string, args []string, book *startupLog) (*exec.Cmd, chan
 	return cmd, done, nil
 }
 
+// Allow the manager's 15-second SQL shutdown and the normal stop command to finish.
+var managedStopGrace = 30 * time.Second
+
 func stopManaged(root, data string, cmd *exec.Cmd, done chan error, book *startupLog) {
 	select {
 	case err := <-done:
@@ -142,10 +145,12 @@ func stopManaged(root, data string, cmd *exec.Cmd, done chan error, book *startu
 		return
 	default:
 	}
+	grace, cancel := context.WithTimeout(context.Background(), managedStopGrace)
+	defer cancel()
 	if runtime.GOOS == "windows" {
 		// Use the existing normal stop owner: only the installation's backend
 		// exits; its managed parent remains alive to shut down MariaDB.
-		stop := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(root, "bin", "stop.ps1"), "-Data", data)
+		stop := exec.CommandContext(grace, "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(root, "bin", "stop.ps1"), "-Data", data)
 		stop.Stdout, stop.Stderr = os.Stdout, os.Stderr
 		if book != nil {
 			stop.Stdout, stop.Stderr = book.out, book.err
@@ -154,9 +159,14 @@ func stopManaged(root, data string, cmd *exec.Cmd, done chan error, book *startu
 	} else {
 		_ = cmd.Process.Signal(os.Interrupt)
 	}
-	// The manager owns bounded DB shutdown. Never kill it before that cleanup.
-	err := <-done
-	done <- err
+	select {
+	case err := <-done:
+		done <- err
+	case <-grace.Done():
+		_ = cmd.Process.Kill()
+		err := <-done
+		done <- err
+	}
 }
 
 func exitCode(err error) int {

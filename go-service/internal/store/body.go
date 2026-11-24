@@ -526,7 +526,7 @@ func (d *DB) BodyStates(chatKey string, scope []memory.ScopedTurn) ([]body.State
 					// a result frozen on the day the event was read on before
 					// (a story's "day N" as given) keeps that day: a kept
 					// result is never moved or drawn again
-					if was := body.DayOf(e.When); was.Known() && was.N == x.ExposureDay {
+					if was := body.DayOf(e.When); was.Same(rec.Day) && was.N == x.ExposureDay {
 						rec.Day = was
 					}
 				}

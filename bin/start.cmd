@@ -18,17 +18,17 @@ for %%I in ("%AC2_LOG_DATA%") do set "AC2_LOG_DATA=%%~fI"
 set "AC2_LOG_DIR=%AC2_LOG_DATA%\logs"
 set "AC2_START_LOG=%AC2_LOG_DIR%\start-%RANDOM%-%RANDOM%.log"
 if not exist "%AC2_LOG_DIR%" mkdir "%AC2_LOG_DIR%" 2>nul
-(echo Archive Center 2 백엔드를 시작합니다. 이 창을 닫으면 백엔드가 꺼집니다.) >"%AC2_START_LOG%" 2>nul
+>"%AC2_START_LOG%" 2>nul echo(Archive Center 2 백엔드를 시작합니다. 이 창을 닫으면 백엔드가 꺼집니다.
 if exist "%AC2_START_LOG%" goto log_ready
 :log_fallback
 set "AC2_LOG_DIR=%TEMP%\ArchiveCenter2-start-logs"
 if not exist "%AC2_LOG_DIR%" mkdir "%AC2_LOG_DIR%" 2>nul
 set "AC2_START_LOG=%AC2_LOG_DIR%\start-%RANDOM%-%RANDOM%.log"
-(echo Archive Center 2 백엔드를 시작합니다. 이 창을 닫으면 백엔드가 꺼집니다.) >"%AC2_START_LOG%" 2>nul
+>"%AC2_START_LOG%" 2>nul echo(Archive Center 2 백엔드를 시작합니다. 이 창을 닫으면 백엔드가 꺼집니다.
 if not exist "%AC2_START_LOG%" set "AC2_START_LOG="
 :log_ready
 echo [시작] PowerShell 시작
-if defined AC2_START_LOG (echo [시작] PowerShell 시작)>>"%AC2_START_LOG%"
+if defined AC2_START_LOG >>"%AC2_START_LOG%" echo([시작] PowerShell 시작
 rem START /B gives this waiting CMD an ignored Ctrl+C disposition. PowerShell
 rem re-enables Ctrl+C for itself and Go; CMD can then always do the final pause
 rem without a separate batch-cancellation question.
@@ -42,19 +42,21 @@ goto launch_failed
 set "AC2_EXIT=%ERRORLEVEL%"
 if "%AC2_EXIT%"=="0" goto finished
 :launch_failed
-echo 오류: 시작 명령에서 멈췄습니다. 종료 코드: %AC2_EXIT%
-echo PowerShell 실행 파일: %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe
-echo 시작 스크립트: %AC2_SCRIPT_DIR%start.ps1
+setlocal EnableDelayedExpansion
+echo 오류: 시작 명령에서 멈췄습니다. 종료 코드: !AC2_EXIT!
+echo PowerShell 실행 파일: !SystemRoot!\System32\WindowsPowerShell\v1.0\powershell.exe
+echo 시작 스크립트: !AC2_SCRIPT_DIR!start.ps1
 echo PowerShell 또는 실행 파일을 열 수 없으면 압축 해제 상태와 백신 차단·격리를 확인해 주세요.
-if defined AC2_START_LOG (echo 오류: 시작 명령에서 멈췄습니다. 종료 코드: %AC2_EXIT%)>>"%AC2_START_LOG%"
-if defined AC2_START_LOG (echo PowerShell 실행 파일: %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe)>>"%AC2_START_LOG%"
-if defined AC2_START_LOG (echo 시작 스크립트: %AC2_SCRIPT_DIR%start.ps1)>>"%AC2_START_LOG%"
-if defined AC2_START_LOG (echo PowerShell 또는 실행 파일을 열 수 없으면 압축 해제 상태와 백신 차단·격리를 확인해 주세요.)>>"%AC2_START_LOG%"
-if defined AC2_START_LOG echo 시작 로그: %AC2_START_LOG%
-if defined AC2_START_LOG (echo 시작 로그: %AC2_START_LOG%)>>"%AC2_START_LOG%"
+if defined AC2_START_LOG >>"!AC2_START_LOG!" echo(오류: 시작 명령에서 멈췄습니다. 종료 코드: !AC2_EXIT!
+if defined AC2_START_LOG >>"!AC2_START_LOG!" echo(PowerShell 실행 파일: !SystemRoot!\System32\WindowsPowerShell\v1.0\powershell.exe
+if defined AC2_START_LOG >>"!AC2_START_LOG!" echo(시작 스크립트: !AC2_SCRIPT_DIR!start.ps1
+if defined AC2_START_LOG >>"!AC2_START_LOG!" echo(PowerShell 또는 실행 파일을 열 수 없으면 압축 해제 상태와 백신 차단·격리를 확인해 주세요.
+if defined AC2_START_LOG echo 시작 로그: !AC2_START_LOG!
+if defined AC2_START_LOG >>"!AC2_START_LOG!" echo(시작 로그: !AC2_START_LOG!
+endlocal
 :finished
 echo 창을 닫으려면 아무 키나 누르세요.
-if defined AC2_START_LOG (echo 창을 닫으려면 아무 키나 누르세요.)>>"%AC2_START_LOG%"
+if defined AC2_START_LOG >>"%AC2_START_LOG%" echo(창을 닫으려면 아무 키나 누르세요.
 pause >nul
 popd
 exit /b %AC2_EXIT%

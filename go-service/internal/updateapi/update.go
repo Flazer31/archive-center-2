@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"archivecenter2/goservice/internal/osfile"
 	"archivecenter2/goservice/internal/packageupdate"
@@ -36,13 +37,66 @@ type Config struct {
 type Server struct{ Cfg Config }
 
 func New(cfg Config) *Server {
+	return newServer(cfg, time.Minute)
+}
+
+func newServer(cfg Config, idleTimeout time.Duration) *Server {
 	if cfg.Client == nil {
 		cfg.Client = http.DefaultClient
 	}
+	client := *cfg.Client
+	transport := client.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	client.Transport = updateTransport{transport, idleTimeout}
+	cfg.Client = &client
 	if strings.TrimSpace(cfg.APIBase) == "" {
 		cfg.APIBase = "https://api.github.com"
 	}
 	return &Server{Cfg: cfg}
+}
+
+// RoundTrip also runs for each redirect, including redirects followed while
+// checking release metadata. Keep the client's redirect limits and hooks.
+type updateTransport struct {
+	base        http.RoundTripper
+	idleTimeout time.Duration
+}
+
+func (tr updateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := validateUpdateDownloadURL(req.URL.String()); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancelCause(req.Context())
+	timer := time.AfterFunc(tr.idleTimeout, func() { cancel(context.DeadlineExceeded) })
+	resp, err := tr.base.RoundTrip(req.WithContext(ctx))
+	timer.Stop()
+	if err != nil {
+		cancel(err)
+		return nil, context.Cause(ctx)
+	}
+	resp.Body = &updateBody{ReadCloser: resp.Body, timer: timer, idleTimeout: tr.idleTimeout, cancel: cancel}
+	return resp, nil
+}
+
+type updateBody struct {
+	io.ReadCloser
+	timer       *time.Timer
+	idleTimeout time.Duration
+	cancel      context.CancelCauseFunc
+}
+
+func (b *updateBody) Read(p []byte) (int, error) {
+	b.timer.Reset(b.idleTimeout)
+	n, err := b.ReadCloser.Read(p)
+	b.timer.Stop()
+	return n, err
+}
+
+func (b *updateBody) Close() error {
+	b.cancel(nil)
+	return b.ReadCloser.Close()
 }
 
 func (s *Server) Routes() map[string]http.HandlerFunc {
@@ -857,7 +911,7 @@ func compareVersions(a, b string) int {
 	if apre != "" && bpre == "" {
 		return -1
 	}
-	return comparePrerelease(apre, bpre)
+	return packageupdate.ComparePrerelease(apre, bpre)
 }
 
 func parseVersion(version string) ([3]int, string) {
@@ -879,45 +933,6 @@ func parseVersion(version string) ([3]int, string) {
 		out[i] = n
 	}
 	return out, strings.ToLower(pre)
-}
-
-func comparePrerelease(a, b string) int {
-	if a == b {
-		return 0
-	}
-	left, right := prereleaseParts(a), prereleaseParts(b)
-	for i := 0; i < len(left) || i < len(right); i++ {
-		if i >= len(left) {
-			return -1
-		}
-		if i >= len(right) {
-			return 1
-		}
-		ln, lnum := strconv.Atoi(left[i])
-		rn, rnum := strconv.Atoi(right[i])
-		switch {
-		case lnum == nil && rnum == nil && ln != rn:
-			if ln < rn {
-				return -1
-			}
-			return 1
-		case lnum == nil && rnum != nil:
-			return -1
-		case lnum != nil && rnum == nil:
-			return 1
-		case left[i] != right[i]:
-			if left[i] < right[i] {
-				return -1
-			}
-			return 1
-		}
-	}
-	return 0
-}
-
-func prereleaseParts(value string) []string {
-	value = regexp.MustCompile(`([A-Za-z]+)([0-9]+)`).ReplaceAllString(value, `$1.$2`)
-	return strings.FieldsFunc(value, func(r rune) bool { return r == '.' || r == '-' || r == '_' })
 }
 
 func validateUpdateDownloadURL(raw string) error {

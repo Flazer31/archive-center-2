@@ -329,7 +329,7 @@ func Assess(t Toggles, seed string, p Person, records []Record, now Day) (State,
 					}
 				}
 				replace(pg, r.Day)
-				st.Recovering = nil // a new pregnancy: the recovery before it is over
+				st.Recovery, st.Recovering = false, nil // a new pregnancy ends the prior recovery
 				modelX = nil
 			}
 			if latest.Paternity == "" || (latest.Paternity != "unknown" && len(latest.Candidates) == 0) {
@@ -500,7 +500,7 @@ func Assess(t Toggles, seed string, p Person, records []Record, now Day) (State,
 				}
 				addPartners(pg, r)
 				replace(pg, r.Day)
-				st.Recovering = nil // a new pregnancy: the recovery before it is over
+				st.Recovery, st.Recovering = false, nil // a new pregnancy ends the prior recovery
 				modelX = &y
 				continue
 			}

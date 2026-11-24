@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -71,7 +72,7 @@ func attachHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate.Worke
 			var out attachResult
 			var err error
 			if perr := pipe.WithSession("chat:"+chat, func(s *lifecycle.Session) { out, err = count(s) }); perr != nil || err != nil {
-				storeFailed(w, http.StatusInternalServerError, err)
+				storeFailed(w, http.StatusInternalServerError, errors.Join(perr, err))
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -152,7 +153,7 @@ func attachHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate.Worke
 		case missing:
 			settingsError(w, http.StatusNotFound, "chat_not_found")
 		case err != nil || opErr != nil:
-			storeFailed(w, http.StatusInternalServerError, err)
+			storeFailed(w, http.StatusInternalServerError, errors.Join(err, opErr))
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(out)

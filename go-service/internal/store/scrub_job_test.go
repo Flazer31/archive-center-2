@@ -318,3 +318,60 @@ func TestSameTextDroppedFromTwoRowsLeavesNoCopy(t *testing.T) {
 		}
 	}
 }
+
+func TestScrubMarkupOnlyReadsMatchingJobs(t *testing.T) {
+	db := testDB(t)
+	check := func(session, dropped, other string) {
+		save := func(turn int, reply string) Job {
+			t.Helper()
+			src := memory.Source{Session: session, Turn: turn, Responses: []memory.SourceResponse{{Seq: 1, Data: reply}}}
+			job, _, _ := a24Save(t, db, src, `{"memories":[]}`)
+			return job
+		}
+
+		job := save(1, dropped)
+		// Count rows returned by MariaDB on this transaction's connection.
+		// Roll back so both measurements scrub the exact same target.
+		scrub := func() int {
+			t.Helper()
+			tx, err := db.sql.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			sent := func() int {
+				var label string
+				var count int
+				if err := tx.QueryRow("SHOW SESSION STATUS LIKE 'Rows_sent'").Scan(&label, &count); err != nil {
+					t.Fatal(err)
+				}
+				return count
+			}
+			start := sent()
+			if err := scrubSources(tx, session, map[int]bool{job.Turn: true}, dropped, nil); err != nil {
+				t.Fatal(err)
+			}
+			n := sent() - start
+			rows, err := findRows(tx, "SELECT job_id, request FROM gen_jobs WHERE session_key=? ORDER BY turn_id", session)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, row := range rows {
+				if strings.HasPrefix(row.body, removedMark) != (row.id == job.ID) {
+					t.Errorf("wrong job scrubbed: job %d request %q", row.id, row.body)
+				}
+			}
+			return n
+		}
+		before := scrub()
+		save(2, other)
+		save(3, "다른 응답")
+		after := scrub()
+		t.Logf("rows returned before/after adding unrelated turns: %d/%d", before, after)
+		if after != before {
+			t.Errorf("adding unrelated turns changed rows returned from %d to %d", before, after)
+		}
+	}
+	check("chat:image", `<img src="a">`, `<img src="b">`)
+	check("chat:paragraph", `<p><img src="a"></p>`, `<p><img src="b"></p>`)
+}

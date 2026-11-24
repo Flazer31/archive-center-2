@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -73,7 +74,7 @@ func chatOpsHandler(pipe *pipeline.Pipeline, db *store.DB, worker *generate.Work
 			err = locked()
 		}
 		if err != nil || opErr != nil {
-			storeFailed(w, http.StatusInternalServerError, err)
+			storeFailed(w, http.StatusInternalServerError, errors.Join(err, opErr))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

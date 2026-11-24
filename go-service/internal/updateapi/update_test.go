@@ -3,6 +3,7 @@ package updateapi
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"archivecenter2/goservice/internal/packageupdate"
 )
@@ -24,6 +26,98 @@ import (
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestUpdateValidatesEachRedirect(t *testing.T) {
+	const start = "https://github.com/fixture/project/releases/download/test/asset.zip"
+	const cdn = "https://release-assets.githubusercontent.com/asset"
+	const denied = "http://other.invalid/asset"
+	var seen []string
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		address := r.URL.String()
+		seen = append(seen, address)
+		next := ""
+		switch address {
+		case start:
+			next = cdn
+		case cdn:
+			next = denied
+		default:
+			return nil, fmt.Errorf("unexpected transport destination %s", address)
+		}
+		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {next}}, Body: http.NoBody}, nil
+	})}
+	s := New(Config{Client: client})
+	_, err := s.downloadUpdateAsset(t.Context(), updateAssetInfo{DownloadURL: start}, filepath.Join(t.TempDir(), "asset.zip"))
+	if err == nil || !strings.Contains(err.Error(), "update URL must use HTTPS") || len(seen) != 2 {
+		t.Fatalf("redirects visited %v, error %v", seen, err)
+	}
+}
+
+func TestUpdateInterruptsIdleResponses(t *testing.T) {
+	for _, phase := range []string{"headers", "body"} {
+		t.Run(phase, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					t.Errorf("unexpected method %s", r.Method)
+				}
+				if phase == "body" {
+					if r.URL.Path != "/asset" {
+						t.Errorf("unexpected asset path %s", r.URL.Path)
+					}
+					fmt.Fprint(w, "partial")
+					w.(http.Flusher).Flush()
+				} else if r.URL.Path != "/repos/fixture/project/releases/latest" {
+					t.Errorf("unexpected release path %s", r.URL.Path)
+				}
+				select {
+				case <-r.Context().Done():
+				case <-time.After(time.Second):
+					fmt.Fprint(w, `{"tag_name":"v1.0.0"}`)
+				}
+			}))
+			defer server.Close()
+			s := newServer(Config{APIBase: server.URL}, 100*time.Millisecond)
+			var err error
+			if phase == "headers" {
+				_, err = s.fetchGitHubLatestRelease(t.Context(), "fixture/project")
+			} else {
+				path := filepath.Join(t.TempDir(), "asset.zip")
+				_, err = s.downloadUpdateAsset(t.Context(), updateAssetInfo{DownloadURL: server.URL + "/asset"}, path)
+				for _, file := range []string{path, path + ".tmp"} {
+					if _, statErr := os.Stat(file); !errors.Is(statErr, os.ErrNotExist) {
+						t.Errorf("partial download remains at %s: %v", file, statErr)
+					}
+				}
+			}
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("stalled %s error=%v, want deadline exceeded", phase, err)
+			}
+		})
+	}
+}
+
+func TestUpdateProgressingDownloadCanExceedIdleTimeout(t *testing.T) {
+	const idleTimeout = 300 * time.Millisecond
+	const chunks = 5
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/asset" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		for i := 0; i < chunks; i++ {
+			fmt.Fprint(w, "x")
+			w.(http.Flusher).Flush()
+			time.Sleep(idleTimeout / 3)
+		}
+	}))
+	defer server.Close()
+	s := newServer(Config{}, idleTimeout)
+	path := filepath.Join(t.TempDir(), "asset.zip")
+	n, err := s.downloadUpdateAsset(t.Context(), updateAssetInfo{DownloadURL: server.URL + "/asset"}, path)
+	data, readErr := os.ReadFile(path)
+	if err != nil || n != chunks || readErr != nil || string(data) != strings.Repeat("x", chunks) {
+		t.Fatalf("progressing download: bytes=%d error=%v file=%q read error=%v", n, err, data, readErr)
+	}
+}
 
 func TestUnconfiguredRoutesNeverCallNetwork(t *testing.T) {
 	var calls atomic.Int32

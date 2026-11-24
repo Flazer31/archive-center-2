@@ -24,6 +24,50 @@ import (
 	"archivecenter2/goservice/internal/store"
 )
 
+// A chat keeps its previous main request's fingerprints (1.1 A2) and
+// its last completed answer for provider retries (1.4 I081).
+type chatRequestHistory struct {
+	payload []store.TextPrint
+	answer  sentAnswer
+}
+
+type requestHistory struct {
+	mu    sync.Mutex
+	chats map[string]*chatRequestHistory
+	order []string // least recently used first
+}
+
+func (h *requestHistory) begin(chat string, payload []store.TextPrint) (*chatRequestHistory, *store.RequestPrefix) {
+	cur := make([]store.TextPrint, len(payload))
+	for i, m := range payload {
+		cur[i] = store.TextPrint{Len: m.Len, H: m.H, Role: m.Role}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	entry := h.chats[chat]
+	var prefix *store.RequestPrefix
+	if entry == nil {
+		entry = &chatRequestHistory{}
+		if h.chats == nil {
+			h.chats = make(map[string]*chatRequestHistory)
+		}
+		h.chats[chat] = entry
+	} else {
+		p := store.ComparePrefix(entry.payload, cur)
+		prefix = &p
+	}
+	entry.payload = cur
+	if i := slices.Index(h.order, chat); i >= 0 {
+		h.order = slices.Delete(h.order, i, i+1)
+	}
+	h.order = append(h.order, chat)
+	if len(h.order) > injectionsKept {
+		delete(h.chats, h.order[0])
+		h.order = h.order[1:]
+	}
+	return entry, prefix
+}
+
 // injectHandler answers the memory a request gets: POST {"chat_id",
 // "input", "payload": [{"len","h"}]} -> the memory block and what was
 // chosen. Without a query vector (no key, or the provider failed) the order
@@ -33,46 +77,9 @@ import (
 // st, when set, keeps the result for the status screen.
 func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB, query func() *provider.Embedder, st *status) http.HandlerFunc {
 	transportBuilder := &memoryTransportBuilder{}
-	// each chat's previous main-model request, as fingerprints, to compare
-	// the next one with from the start (1.1 A2). Compared in the order the
-	// requests arrive, the order the provider gets them; each delivery keeps
-	// the comparison with the request received before it. In memory only,
-	// for the injectionsKept chats used last (as the last-delivery view):
-	// the first request after a start, or in a chat not used for long, has
-	// nothing to compare.
-	var prevMu sync.Mutex
-	prevRequest := map[string][]store.TextPrint{}
-	// each chat's last answer, kept for the host sending the same request
-	// again (1.4 I081): RisuAI calls the request hook once per provider
-	// retry, and the plugin then finds its own block already in the
-	// request. Such a resend at the same turn and input gets the same answer
-	// without choosing or calling the publisher again; anything else is
-	// answered as before. Kept with prevRequest, for the same chats.
-	lastAnswer := map[string]sentAnswer{}
-	var prevOrder []string // chats, least recently used first
-	comparePrefix := func(chat string, payload []store.TextPrint) *store.RequestPrefix {
-		cur := make([]store.TextPrint, len(payload))
-		for i, m := range payload {
-			cur[i] = store.TextPrint{Len: m.Len, H: m.H, Role: m.Role}
-		}
-		prevMu.Lock()
-		defer prevMu.Unlock()
-		prev, ok := prevRequest[chat]
-		prevRequest[chat] = cur
-		if i := slices.Index(prevOrder, chat); i >= 0 {
-			prevOrder = slices.Delete(prevOrder, i, i+1)
-		}
-		prevOrder = append(prevOrder, chat)
-		for len(prevOrder) > injectionsKept {
-			delete(prevRequest, prevOrder[0])
-			delete(lastAnswer, prevOrder[0])
-			prevOrder = prevOrder[1:]
-		}
-		if !ok {
-			return nil
-		}
-		p := store.ComparePrefix(prev, cur)
-		return &p
+	history := &requestHistory{}
+	if st != nil {
+		history = &st.requests
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -131,7 +138,7 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 			return
 		}
 		// the main-model request against the chat's previous one (1.1 A2)
-		prefix := comparePrefix(req.ChatID, req.Payload)
+		entry, prefix := history.begin(req.ChatID, req.Payload)
 		step("observe")
 		// the chat as last observed, read under the observation lock
 		var scope []memory.ScopedTurn
@@ -184,11 +191,11 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 		}
 		at += "\x00" + input
 		if handedBack && !resend && applyWarning == "" {
-			prevMu.Lock()
-			a, ok := lastAnswer[req.ChatID]
-			prevMu.Unlock()
+			history.mu.Lock()
+			a := entry.answer
+			history.mu.Unlock()
 			back := sortedCopy(req.HandedBack)
-			if ok && a.at == at && slices.ContainsFunc(a.prints, func(p []string) bool { return slices.Equal(p, back) }) {
+			if a.at == at && slices.ContainsFunc(a.prints, func(p []string) bool { return slices.Equal(p, back) }) {
 				mode, marker, err := db.MemoryPlacement()
 				if err != nil {
 					storeFailed(w, 500, err)
@@ -311,8 +318,7 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 		d.Narrative = narr
 		var in *injection
 		if st != nil {
-			in = st.injected(req.ChatID, d, warning, chars, secret, total, queryErr, dr.Query != nil, scope...)
-			in.Stages = stages
+			in = st.injected(req.ChatID, d, warning, chars, secret, total, queryErr, dr.Query != nil, stages, scope...)
 		}
 		// the delivery is kept in the database too, with every candidate
 		// considered, so it can be checked after a restart (10-29); a failed
@@ -354,19 +360,19 @@ func injectHandler(server *observe.Server, pipe *pipeline.Pipeline, db *store.DB
 			return
 		}
 		body = append(body, '\n')
-		prevMu.Lock()
-		if _, kept := prevRequest[req.ChatID]; kept {
-			prints := ans.prints()
-			if rewrite == nil && holdsRewrite {
-				// made anew for a request holding an improved input: that
-				// input stays in the request, so its print is this answer's
-				for i, p := range prints {
-					prints[i] = sortedCopy(append(p, heldRewrite...))
-				}
+		prints := ans.prints()
+		if rewrite == nil && holdsRewrite {
+			// made anew for a request holding an improved input: that
+			// input stays in the request, so its print is this answer's
+			for i, p := range prints {
+				prints[i] = sortedCopy(append(p, heldRewrite...))
 			}
-			lastAnswer[req.ChatID] = sentAnswer{at: at, prints: prints, body: body}
 		}
-		prevMu.Unlock()
+		// If reset or eviction detached this entry, an in-flight answer
+		// finishes against the old entry, outside the new chat history.
+		history.mu.Lock()
+		entry.answer = sentAnswer{at: at, prints: prints, body: body}
+		history.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(body)
 	}

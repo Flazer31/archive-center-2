@@ -5,15 +5,17 @@ package pdfmemory
 
 import (
 	"crypto/sha256"
-	"embed"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
+	"runtime"
 	"sort"
 	"strings"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/signintech/gopdf"
 )
@@ -37,11 +39,17 @@ var (
 	ErrRender          = errors.New("pdfmemory: PDF render failed")
 )
 
-// assets contains the unmodified Google Fonts Noto Sans KR variable font and
-// its OFL license.
+// The font is embedded as a string so it stays in the binary's read-only
+// data: a []byte embed is writable data that Windows charges as private
+// memory (about 10 MiB) from startup, even when no PDF is made.
 //
-//go:embed assets/NotoSansKR-VF.ttf assets/NotoSansKR-OFL.txt
-var assets embed.FS
+//go:embed assets/NotoSansKR-VF.ttf
+var fontText string
+
+// Keep the font's OFL notice embedded alongside it in the standalone binary.
+//
+//go:embed assets/NotoSansKR-OFL.txt
+var fontLicense string
 
 // Document contains the generated PDF and measurements derived without
 // interpreting provider behavior.
@@ -57,15 +65,18 @@ type Document struct {
 	FontAssetBytes    int
 }
 
-// Generate creates a searchable A4 PDF containing exactly text. It lays the
-// text out at 2pt in four columns and adds pages as needed. It does not trim,
-// normalize, summarize, label, or otherwise add to the input.
+// Generate lays text out at 2pt in four A4 columns. For layout, CRLF and CR
+// become line breaks and tabs become spaces. Logical metadata describes the input.
 func Generate(text string) (Document, error) {
-	fontData, err := assets.ReadFile("assets/NotoSansKR-VF.ttf")
-	if err != nil {
-		return Document{}, fmt.Errorf("%w: embedded Noto Sans KR asset: %v", ErrFontLoad, err)
-	}
-	return generateWithFont(text, fontData)
+	runtime.KeepAlive(fontLicense)
+	return generateWithFont(text, embeddedFont())
+}
+
+// embeddedFont is a read-only view of the embedded font. gopdf only reads
+// the font bytes (parsing and copying subsets into its own buffers), so the
+// view needs no copy and must never be written.
+func embeddedFont() []byte {
+	return unsafe.Slice(unsafe.StringData(fontText), len(fontText))
 }
 
 func generateWithFont(text string, fontData []byte) (Document, error) {
@@ -75,7 +86,10 @@ func generateWithFont(text string, fontData []byte) (Document, error) {
 	if !utf8.ValidString(text) {
 		return Document{}, ErrInvalidUTF8
 	}
-	if err := validateTextControls(text); err != nil {
+	layout := strings.ReplaceAll(text, "\r\n", "\n")
+	layout = strings.ReplaceAll(layout, "\r", "\n")
+	layout = strings.ReplaceAll(layout, "\t", " ")
+	if err := validateTextControls(layout); err != nil {
 		return Document{}, err
 	}
 
@@ -97,7 +111,7 @@ func generateWithFont(text string, fontData []byte) (Document, error) {
 	}
 
 	columnWidth := (pageWidth - 2*pageMargin - columnGap*float64(columnCount-1)) / columnCount
-	visualLines, err := splitVisualLines(pdf, text, columnWidth)
+	visualLines, err := splitVisualLines(pdf, layout, columnWidth)
 	if err != nil {
 		return Document{}, fmt.Errorf("%w: layout: %v", ErrRender, err)
 	}

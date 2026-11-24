@@ -109,6 +109,11 @@ func NewDecider(c DecisionConfig) (*Decider, error) {
 // Model is the model asked.
 func (d *Decider) Model() string { return d.cfg.Model }
 
+// Connection identifies the decision service after defaults and URL resolution.
+func (d *Decider) Connection() (service, endpoint, model string) {
+	return d.cfg.Provider, d.endpoint, d.cfg.Model
+}
+
 // Question is one yes/no question: Text asks it, Yes and No say what each
 // answer means.
 type Question struct {

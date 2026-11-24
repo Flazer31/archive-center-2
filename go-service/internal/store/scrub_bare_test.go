@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"archivecenter2/goservice/internal/lifecycle"
+	"archivecenter2/goservice/internal/memory"
 	"archivecenter2/goservice/internal/observe"
 )
 
@@ -74,5 +75,39 @@ func TestReplacedBodyLeavesBareHooks(t *testing.T) {
 	}
 	if content(in)["text"] != "입력" || content(other)["text"] != "다른 채팅의 답" {
 		t.Fatal("a held or unrelated text was removed")
+	}
+}
+
+func TestScrubEscapedOnlyText(t *testing.T) {
+	db := testDB(t)
+	const dropped = "<>&\\"
+	bare, _ := json.Marshal(map[string]any{"hook": "afterRequest", "content": map[string]string{"text": dropped}})
+	sink := RawSink{DB: db}
+	if _, err := sink.Write([]observe.Record{
+		rec(1, string(bare)),
+		rec(2, `{"hook":"output","stored_chat":{"chat_id":"B","rows":[{"data":{"text":"unrelated"}}]}}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.sql.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := scrubObservations(tx, "A", dropped, nil); err != nil {
+		t.Fatal(err)
+	}
+	var cleared bool
+	if err := tx.QueryRow(`SELECT JSON_EXTRACT(event,'$.content.text') IS NULL FROM raw_observations WHERE hook='afterRequest'`).Scan(&cleared); err != nil || !cleared {
+		t.Fatalf("bare dropped text remains despite unrelated chat: cleared=%v err=%v", cleared, err)
+	}
+	source, _ := json.Marshal(memory.Source{Responses: []memory.SourceResponse{{Data: dropped}}})
+	for i, b := range []string{"unrelated", string(source)} {
+		if _, err := tx.Exec(`INSERT INTO branch_copies (session_key,turn_id,own_key,source) VALUES ('chat:B',?, 'key', ?)`, i+1, b); err != nil {
+			t.Fatal(err)
+		}
+		if used, err := usedElsewhere(tx, "chat:A", dropped); err != nil || used != (i == 1) {
+			t.Fatalf("branch source %q: used=%v err=%v", b, used, err)
+		}
 	}
 }

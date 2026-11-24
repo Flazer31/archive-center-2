@@ -141,6 +141,15 @@ func TestDeliverClosingStatusKeepsEffectProtection(t *testing.T) {
 	if !strings.Contains(l, "status fulfilled") || !strings.Contains(l, "hide from: 서진") || !d.SecretIDs[items.Memories[0].ID] {
 		t.Fatalf("closed promise without the closing effect's protection: %q (secret %v)", l, d.SecretIDs)
 	}
+	why := ""
+	for _, row := range d.Trace {
+		if row.ID == items.Memories[0].ID {
+			why = row.Why
+		}
+	}
+	if why != WhySecret {
+		t.Fatalf("promise charged to secret budget but selected by %q", why)
+	}
 	// with no secret room the fulfilment is not shown on a public line
 	req.Secret = 0
 	if d, err = db.Deliver(memory.ScopeOf(s), req); err != nil {

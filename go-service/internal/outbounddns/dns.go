@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // ConfigureOutboundDNSServers carries AC1's outbound resolver into AC2.
@@ -16,13 +17,21 @@ func ConfigureOutboundDNSServers(raw string) bool {
 	if len(servers) == 0 {
 		return false
 	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = outboundDialer(servers).DialContext
+	http.DefaultTransport = transport
+	http.DefaultClient = &http.Client{Transport: transport}
+	return true
+}
+
+func outboundDialer(servers []string) *net.Dialer {
 	resolver := &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			dialer := net.Dialer{}
 			var lastErr error
 			for _, server := range servers {
-				conn, err := dialer.DialContext(ctx, "udp", server)
+				conn, err := dialer.DialContext(ctx, network, server)
 				if err == nil {
 					return conn, nil
 				}
@@ -34,11 +43,7 @@ func ConfigureOutboundDNSServers(raw string) bool {
 			return dialer.DialContext(ctx, network, address)
 		},
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.DialContext = (&net.Dialer{Resolver: resolver}).DialContext
-	http.DefaultTransport = transport
-	http.DefaultClient = &http.Client{Transport: transport}
-	return true
+	return &net.Dialer{Resolver: resolver, Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 }
 
 func normalizeDNSServers(raw string) []string {

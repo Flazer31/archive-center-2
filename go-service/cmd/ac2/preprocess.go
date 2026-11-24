@@ -159,16 +159,26 @@ func wholeLines(d store.Delivery) map[string]string {
 	return out
 }
 
-// askUnrelated asks the decision model of each line (by id, in order) and
+// askUnrelated asks the decision model of uncached lines (by id, in order) and
 // returns P(unrelated) by id; requests of 64 go at most prepParallel at once.
 // A failed request leaves its lines unanswered; err is the first failure.
 func askUnrelated(ctx context.Context, dec *provider.Decider, state string, ids []string, lines map[string]string, rec *store.PreprocessRecord) (map[string]float64, error) {
+	scene := decisionStateKey(dec, state)
+	out := map[string]float64{}
+	keys := make(map[string]decisionDigest, len(ids))
 	var qs []provider.Question
 	for _, id := range ids {
-		qs = append(qs, provider.Question{ID: id, Text: prepQuestion + lines[id], Yes: prepUnrelatedYes, No: prepUnrelatedNo})
+		q := provider.Question{ID: id, Text: prepQuestion + lines[id], Yes: prepUnrelatedYes, No: prepUnrelatedNo}
+		key := decisionHash(q.Text, q.Yes, q.No)
+		if v, ok := prepDecisionCache.lookup(scene, key); ok {
+			out[id] = v
+			rec.Reused++
+			continue
+		}
+		keys[id] = key
+		qs = append(qs, q)
 	}
-	rec.Asked = len(qs)
-	out := map[string]float64{}
+	rec.Asked = len(ids)
 	var mu sync.Mutex
 	var first error
 	var wg sync.WaitGroup
@@ -184,7 +194,7 @@ func askUnrelated(ctx context.Context, dec *provider.Decider, state string, ids 
 			mu.Lock()
 			defer mu.Unlock()
 			for k, v := range a.Yes {
-				out[k] = v
+				out[k] = prepDecisionCache.remember(scene, keys[k], v)
 			}
 			rec.DecisionCalls += a.Calls
 			rec.DecisionRejected += a.Rejected
@@ -361,6 +371,7 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 		go func() { defer wg.Done(); pb, eb = askUnrelated(ctx, p.decider, decState, basic.IDs, lines, &rb) }()
 		go func() { defer wg.Done(); pr, er = askUnrelated(ctx, p.decider, decState, rest, lines, &rr) }()
 		wg.Wait()
+		rec.Reused = rb.Reused + rr.Reused
 		rec.Asked, rec.DecisionCalls, rec.DecisionRejected, rec.InputTokens = rb.Asked+rr.Asked, rb.DecisionCalls+rr.DecisionCalls, rb.DecisionRejected+rr.DecisionRejected, rb.InputTokens+rr.InputTokens
 		p0 = map[string]float64{}
 		for k, v := range pr {
@@ -412,6 +423,7 @@ func preprocess(ctx context.Context, p *prepDeps, db *store.DB, scope []memory.S
 				defer wg.Done()
 				var r store.PreprocessRecord
 				p0, decErr = askUnrelated(ctx, p.decider, decState, basic.IDs, wholeLines(basic), &r)
+				rec.Reused = r.Reused
 				rec.Asked, rec.DecisionCalls, rec.DecisionRejected, rec.InputTokens = r.Asked, r.DecisionCalls, r.DecisionRejected, r.InputTokens
 			}()
 		} else {

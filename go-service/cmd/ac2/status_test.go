@@ -79,7 +79,7 @@ func TestStatusView(t *testing.T) {
 		t.Fatalf("index failure %v", v)
 	}
 	// a good query is not the index's recovery
-	st.injected("Q", store.Delivery{}, "", 1, 1, 1, nil, true)
+	st.injected("Q", store.Delivery{}, "", 1, 1, 1, nil, true, nil)
 	if v := getStatus(t, st); v["chip"] != "embedding_failed" || v["embedding"].(map[string]any)["state"] != "failing" {
 		t.Fatalf("a good query cleared the index failure %v", v)
 	}
@@ -170,8 +170,8 @@ func TestStatusIsTheChats(t *testing.T) {
 	m := &models{db: db, box: box, worker: w, flagRetries: 3, flagCritic: provider.Config{Provider: "ollama", Model: "a", URL: "http://127.0.0.1:9"}}
 	m.apply(store.ModelSettings{Retries: store.DefaultRetries}, false)
 	st := newStatus(db, m, w)
-	st.injected("A", store.Delivery{IDs: []string{"M1"}, Chars: 10}, "", 100, 50, 1, nil, false)
-	st.injected("B", store.Delivery{Chars: 70}, "", 900, 50, 1, nil, false)
+	st.injected("A", store.Delivery{IDs: []string{"M1"}, Chars: 10}, "", 100, 50, 1, nil, false, nil)
+	st.injected("B", store.Delivery{Chars: 70}, "", 900, 50, 1, nil, false, nil)
 	a := getStatus(t, st, "A")
 	if in := a["injection"].(map[string]any); a["chat"] != "A" || in["chat"] != "A" || in["chars_max"].(float64) != 100 || in["items"].(float64) != 1 {
 		t.Fatalf("chat A shows %v", a["injection"])

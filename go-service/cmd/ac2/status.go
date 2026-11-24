@@ -87,12 +87,13 @@ type status struct {
 	worker *generate.Worker
 	now    func() time.Time
 
-	mu     sync.Mutex
-	events []event // oldest first
-	last   map[string]*injection
-	index  vectorPath
-	query  vectorPath
-	hud    *hud
+	mu       sync.Mutex
+	events   []event // oldest first
+	last     map[string]*injection
+	index    vectorPath
+	query    vectorPath
+	hud      *hud
+	requests requestHistory
 }
 
 func newStatus(db *store.DB, mods *models, worker *generate.Worker) *status {
@@ -162,8 +163,8 @@ func (s *status) workerEvent(kind, session string, turn int, err error) {
 }
 
 // injected records a memory request's result.
-func (s *status) injected(chat string, d store.Delivery, warning string, charsMax, secretMax int, ms int64, queryErr error, queried bool, scope ...memory.ScopedTurn) *injection {
-	in := &injection{At: s.now(), Chat: chat, Items: len(d.IDs), Chars: d.Chars, CharsMax: charsMax, SecretChars: d.SecretChars, SecretMax: secretMax, Ranked: d.Ranked, Warning: warning, TotalMS: ms}
+func (s *status) injected(chat string, d store.Delivery, warning string, charsMax, secretMax int, ms int64, queryErr error, queried bool, stages []store.DeliveryStage, scope ...memory.ScopedTurn) *injection {
+	in := &injection{At: s.now(), Chat: chat, Items: len(d.IDs), Chars: d.Chars, CharsMax: charsMax, SecretChars: d.SecretChars, SecretMax: secretMax, Ranked: d.Ranked, Warning: warning, TotalMS: ms, Stages: stages}
 	in.RecentQueryUsed = &d.RecentQueryUsed
 	if d.Preprocess != nil {
 		// the provider's error text may quote the request: status and HUD

@@ -483,6 +483,28 @@ test("narrative support (review 20 B-01, B-02): the improved input goes into thi
   await state.unload();
 });
 
+test("bugfix C #2: input rewrite applies before trailing assistant prefills and stays in this turn", async () => {
+  const state = { storeData: {}, calls: [], backendUp: true, rereadChat: chat([]),
+    injectReply: { block: "", input_rewrite: { from: "묻는다", to: "약속을 묻는다" } } };
+  const h = await loadPlugin(state);
+  try {
+    const msgs = [{ role: "user", content: "묻는다" }, { role: "assistant", content: "옛 답" },
+      { role: "user", content: "묻는다" }, { role: "user", content: "프리셋 예문: 묻는다" },
+      { role: "assistant", content: "prefill" }, { role: "assistant", content: "continued prefill" }];
+    const expected = msgs.map((m) => m.content);
+    expected[2] = state.injectReply.input_rewrite.to;
+    const out = await h.beforeRequest[0](msgs, "model");
+    assert.deepStrictEqual(out.map((m) => m.content), expected);
+    assert.strictEqual(msgs[2].content, state.injectReply.input_rewrite.from, "the host's input stays unchanged");
+    const again = await h.beforeRequest[0](JSON.parse(JSON.stringify(out)), "model");
+    assert.deepStrictEqual(again.map((m) => m.content), expected, "a provider retry applies the rewrite once");
+    assert.ok(state.injects.at(-1).handed_back.some((p) => p.startsWith("rw:")), "the prefilled retry carries its rewrite fingerprint");
+    const gone = msgs.map((m, i) => i === 2 ? { ...m, content: "다른 글" } : i === 3 ? { ...m, content: "참고" } : m);
+    const untouched = await h.beforeRequest[0](gone, "model");
+    assert.deepStrictEqual(untouched.map((m) => m.content), gone.map((m) => m.content), "an older matching user row is never rewritten");
+  } finally { await state.unload(); }
+});
+
 test("1.4 I081: a request handed back sends the fingerprints of the plugin's messages and of the improved input it holds; a fresh request sends none", async () => {
   const block = memoryBlock("- M1\n"), after = guideMsg("[서사 참고]\n- 약속\n");
   const state = { storeData: {}, calls: [], backendUp: true, rereadChat: chat([]),
@@ -2311,6 +2333,7 @@ class UiEl {
   append(...v) { for (const c of v) { if (c && typeof c === "object") { if (c.parent) c.parent.children = c.parent.children.filter((x) => x !== c); c.parent = this; } this.children.push(c); } }
   replaceChildren(...v) { for (const c of this.children) if (c && typeof c === "object" && c.parent === this) c.parent = null; this.children = []; this.append(...v.map((x) => (x === null || x === undefined ? String(x) : x))); } // as the DOM: a null becomes the text "null"
   get isConnected() { let n = this; while (n.parent) n = n.parent; return n.root === true; }
+  contains(other) { for (let n = other; n; n = n.parent) if (n === this) return true; return false; }
   // as the DOM: setting textContent replaces the children
   get textContent() { return this._text || ""; }
   set textContent(v) { if (this.children) { for (const c of this.children) if (c && typeof c === "object" && c.parent === this) c.parent = null; this.children = []; } this._text = v == null ? "" : String(v); }
@@ -2320,8 +2343,8 @@ class UiEl {
   querySelector(q) { return uiAll(this).find((e) => e !== this && (q.startsWith(".") ? (" " + e.className + " ").includes(" " + q.slice(1) + " ") : q === "[role=status]" && e.role === "status")) || null; }
   get classList() { const e = this; return { toggle(c, on) { const has = (" " + e.className + " ").includes(" " + c + " "); if (on && !has) e.className += " " + c; if (!on && has) e.className = e.className.replace(c, "").trim(); } }; }
 }
-const uiAll = (e) => [e, ...e.children.filter((c) => c instanceof UiEl).flatMap(uiAll)];
-const uiText = (e) => (e == null ? "" : typeof e === "string" ? e : (e.textContent || "") + e.children.map(uiText).join(""));
+const uiAll = (e) => [e, ...Array.from(e.children).filter((c) => c instanceof UiEl).flatMap(uiAll)];
+const uiText = (e) => (e == null ? "" : typeof e === "string" ? e : (e.textContent || "") + Array.from(e.children).map(uiText).join(""));
 const uiNoNull = (e) => assert.ok(!/(^|[^a-z])(null|undefined)([^a-z]|$)/.test(uiText(e)), "a null or undefined was drawn as text: " + uiText(e));
 const uiShown = (e) => { for (let x = e; x; x = x.parent) if (x.hidden) return false; return true; };
 
@@ -3165,6 +3188,30 @@ test("memories: a row edits and deletes in place; several are chosen and deleted
   assert.ok(uiText(s.confirm()).includes("고른 기억 2개를 지울까요"));
   await s.btn("삭제", s.confirm()).listeners.click();
   assert.deepStrictEqual(s.posts("/memory/delete").at(-1), { chat_id: "A", ids: ["M1", "M2"] });
+  uiNoNull(s.body);
+});
+
+test("bugfix C #1: bulk deletion reloads the list with HTMLCollection-shaped children", async () => {
+  const memories = [{ id: "M1", turn: 1, kind: "fact", body: "지울 첫 기억" }, { id: "M2", turn: 2, kind: "fact", body: "지울 둘째 기억" }, { id: "M3", turn: 3, kind: "fact", body: "남길 기억" }];
+  let deleted = false;
+  const s = uiSim([["/memory/list", () => { const rows = deleted ? memories.slice(2) : memories; return OK({ total: rows.length, memories: rows }); }],
+    ["/memory/delete", (body) => { assert.deepStrictEqual(body, { chat_id: "A", ids: memories.slice(0, 2).map((m) => m.id) }); deleted = true; return OK({ remade: [] }); }]]);
+  s.ctx.setSub("list");
+  await s.ctx.memoriesTab(s.body);
+  await s.btn("여러 개 고르기").listeners.click(); await tick(5);
+  for (const row of s.items().slice(0, 2)) { const pick = uiAll(row).find((e) => e.type === "checkbox"); pick.checked = true; pick.listeners.change(); }
+  await s.btn("고른 기억 2개 지우기").listeners.click();
+  const confirmation = s.confirm(), slot = confirmation.parent, children = slot.children;
+  // This boundary has iterable, indexed DOM children, with no Array methods.
+  slot.children = { ...children, length: children.length, item: (i) => children[i] || null, [Symbol.iterator]: () => children[Symbol.iterator]() };
+  assert.strictEqual(slot.children.includes, undefined);
+  assert.strictEqual(slot.children.map, undefined);
+  const reads = s.calls.filter((c) => c.path.startsWith("/memory/list?")).length;
+  await s.btn("삭제", confirmation).listeners.click();
+  assert.strictEqual(s.calls.filter((c) => c.path.startsWith("/memory/list?")).length, reads + 1, "the list is read again after deletion");
+  assert.deepStrictEqual(s.items().map(uiText).map((text) => text.includes(memories[2].body)), [true], "the remaining row is drawn");
+  assert.strictEqual(s.confirm(), undefined, "the completed confirmation closes");
+  assert.strictEqual(vm.runInContext("pluginErrors.length", s.ctx), 0, "no refresh error was swallowed");
   uiNoNull(s.body);
 });
 
@@ -4106,6 +4153,40 @@ test("turn HUD: off draws nothing; on, the chip names the memory given and the l
   assert.strictEqual(h.root.children.length, 0, "unload removes the chip");
 });
 
+for (const failure of ["listener", "root", "both"]) test("bugfix C M(HUD): cleanup continues and redraws after " + failure + " removal fails", async () => {
+  const h = await u6Host({ hud: u6View(true) });
+  const old = h.root.children[0], removeRoot = old.remove.bind(old);
+  const listeners = [...u6All(old), h.root].flatMap((el) => Object.keys(el.listeners).map((id) => ({ el, id })));
+  const attempts = [];
+  let restoreBody;
+  let rootAttempts = 0;
+  for (const el of new Set(listeners.map((l) => l.el))) {
+    const removeListener = el.removeEventListener.bind(el);
+    if (el === h.root) restoreBody = () => { el.removeEventListener = removeListener; };
+    el.removeEventListener = async (type, id) => {
+      attempts.push({ el, id });
+      if (failure !== "root" && el === listeners[0].el && id === listeners[0].id) throw new Error("synthetic listener removal failure");
+      return removeListener(type, id);
+    };
+  }
+  old.remove = async () => { rootAttempts++; if (failure !== "listener") throw new Error("synthetic root removal failure"); await removeRoot(); };
+  try {
+    h.state.hud = u6View(true, true);
+    await h.fire();
+    assert.deepStrictEqual(attempts, listeners, "every registered listener is cleaned despite an earlier failure");
+    assert.strictEqual(rootAttempts, 1, "root cleanup is attempted even when a listener fails");
+    assert.ok(h.root.children.some((el) => el !== old && u6Text(el).includes("AC2 · 3턴 실패")), "the changed HUD is drawn despite cleanup errors");
+    restoreBody(); // later registrations on the body have their own listener ids
+    await removeRoot(); // the host can retain the old node when its remove failed
+    h.state.hud = u6View(true);
+    await h.fire();
+    assert.strictEqual(attempts.length, listeners.length, "old listener references were cleared");
+    assert.strictEqual(rootAttempts, 1, "the old root reference was cleared");
+    assert.strictEqual(h.root.children.length, 1, "later HUD redraws keep working");
+    assert.ok(u6Text(h.root).includes("AC2 · 만드는 중"), u6Text(h.root));
+  } finally { await removeRoot(); await h.close(); }
+});
+
 test("turn HUD: the detail panel opens without errors under the host attribute restriction and still closes", async () => {
   const h = await u6Host({ hud: u6View(true) });
   try {
@@ -4456,4 +4537,18 @@ test("errors: a code without a text of its own shows the backend's code and mess
   assert.ok(keyed.includes("Incorrect API key provided: [접속 정보 가림].") && !keyed.includes("abcdEFGH"), keyed);
   assert.strictEqual(ctx.errText({ ok: false, status: 500, kind: "http_error" }), "요청이 실패했어요 (500).");
   assert.strictEqual(ctx.maskCredentials("read disk-usage-report.log and risk-assessment-2026: denied", ""), "read disk-usage-report.log and risk-assessment-2026: denied");
+});
+
+// RisuAI's plugin screen (checkPluginUpdate/updatePlugin) reads //@version
+// from the first 512 bytes of //@update-url and refuses an update that
+// changes //@name: the header must keep both so RisuAI can offer updates.
+test("plugin header lets RisuAI offer updates from the public repository", () => {
+  const head = SRC.slice(0, 513);
+  const url = SRC.match(/^\/\/@update-url\s+(\S+)/m);
+  assert.ok(url, "no //@update-url");
+  assert.strictEqual(url[1], "https://raw.githubusercontent.com/Flazer31/archive-center-2/main/plugin/archive-center-2.js");
+  const version = head.match(/\/\/@version\s+([^\s]+)/);
+  assert.ok(version, "//@version is not in the first 512 bytes");
+  assert.match(version[1], /^\d+\.\d+\.\d+/);
+  assert.match(SRC, /^\/\/@name archive_center_2$/m);
 });

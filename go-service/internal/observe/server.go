@@ -21,8 +21,8 @@ const (
 
 // Build metadata: release tags/manifests use MachineVersion; the UI uses the
 // display name. Both may be supplied by the release build with -ldflags -X.
-var ServiceVersion = "1.4.0"
-var MachineVersion = "1.4.0"
+var ServiceVersion = "1.5.0"
+var MachineVersion = "1.5.0"
 
 // Stable error codes returned to the plugin.
 const (

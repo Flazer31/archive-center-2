@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -10,13 +11,90 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"archivecenter2/goservice/internal/observe"
+	"archivecenter2/goservice/internal/packageupdate"
 	"archivecenter2/goservice/internal/serve"
 )
+
+func TestStopManagedReapsStuckChildBeforeRollback(t *testing.T) {
+	if os.Getenv("AC2_TEST_STUCK_MANAGER") == "1" {
+		signal.Ignore(os.Interrupt)
+		fmt.Println("ready")
+		time.Sleep(time.Minute)
+		return
+	}
+	root := t.TempDir()
+	data := t.TempDir() // No backend.pid: the real Windows stop script has nothing to stop.
+	if runtime.GOOS == "windows" {
+		stop, err := os.ReadFile("../../../bin/stop.ps1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(filepath.Join(root, "bin"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "bin", "stop.ps1"), stop, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	updates := filepath.Join(root, ".updates")
+	if err := os.Mkdir(updates, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const journal = `{"contract_version":"ac2.update-state.v1","status":"applied_pending_health","current_version":"1","target_version":"2","journal":[{"path":"candidate-only.bin"}]}`
+	if err := os.WriteFile(filepath.Join(updates, "update-state.json"), []byte(journal), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	candidate := filepath.Join(root, "candidate-only.bin")
+	if err := os.WriteFile(candidate, []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	guard, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(guard, os.Args[0], "-test.run=^TestStopManagedReapsStuckChildBeforeRollback$")
+	cmd.Env = append(os.Environ(), "AC2_TEST_STUCK_MANAGER=1")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil || strings.TrimSpace(line) != "ready" {
+		cancel()
+		cmd.Wait()
+		t.Fatalf("child readiness %q, %v", line, err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	oldGrace := managedStopGrace
+	managedStopGrace = time.Second
+	defer func() { managedStopGrace = oldGrace }()
+	start := time.Now()
+	stopManaged(root, data, cmd, done, nil)
+	if guard.Err() != nil || time.Since(start) < managedStopGrace {
+		t.Fatalf("stop did not reap child after grace: elapsed %v, guard %v", time.Since(start), guard.Err())
+	}
+	if err := <-done; err == nil || cmd.ProcessState == nil {
+		t.Fatalf("child completion %v, state %v", err, cmd.ProcessState)
+	}
+	result, err := packageupdate.Rollback(root)
+	if err != nil || result.Status != "rolled_back" {
+		t.Fatalf("rollback %+v, %v", result, err)
+	}
+	if _, err := os.Stat(candidate); !os.IsNotExist(err) {
+		t.Fatalf("candidate survived rollback: %v", err)
+	}
+}
 
 func TestLauncherArgumentsMatchBackendFlagOverrides(t *testing.T) {
 	for _, args := range [][]string{

@@ -132,8 +132,9 @@ type PreprocessRecord struct {
 	Mode             string `json:"mode"`
 	Ran              string `json:"ran"`
 	Fallback         string `json:"fallback,omitempty"`
-	Error            string `json:"error,omitempty"` // keys masked
-	Asked            int    `json:"asked"`           // lines asked about
+	Error            string `json:"error,omitempty"`  // keys masked
+	Asked            int    `json:"asked"`            // lines asked about
+	Reused           int    `json:"reused,omitempty"` // lines answered from the decision cache
 	DecisionCalls    int    `json:"decision_calls"`
 	DecisionRejected int    `json:"decision_rejected"` // too long, asked again in halves
 	InputTokens      int64  `json:"input_tokens"`

@@ -60,7 +60,10 @@ func testDeliverSharesSelectedBasisBody(t *testing.T, sourceFirst, sameTextOther
 			t.Fatal("different occurrence was dropped")
 		}
 	}
-	if got := strings.Count(d.Block, body); got != wantCopies {
+	// The separately charged boundary names its subject. The source and
+	// the views still share one exact definition outside those labels.
+	records := strings.ReplaceAll(d.Block, " (what: "+body+")", "")
+	if got := strings.Count(records, body); got != wantCopies {
 		t.Fatalf("body repeated or a different occurrence merged: got %d, want %d\n%s", got, wantCopies, d.Block)
 	}
 	// each record's whole line (the block writes shared awareness once, 1.3)

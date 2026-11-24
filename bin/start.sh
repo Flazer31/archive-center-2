@@ -2,7 +2,7 @@
 set -eu
 banner='Archive Center 2 백엔드를 시작합니다. 이 터미널을 닫으면 백엔드가 꺼집니다.'
 printf '%s\n' "$banner"
-package_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+package_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 cd "$package_dir"
 umask 077
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -71,7 +72,7 @@ func TestGenerateFailuresReturnNoPDF(t *testing.T) {
 	}{
 		{name: "empty", text: "", want: ErrEmptyText},
 		{name: "invalid UTF-8", text: string([]byte{0xff, 0xfe}), want: ErrInvalidUTF8},
-		{name: "control", text: "첫 줄\r\n둘째 줄", want: ErrUnsupportedText},
+		{name: "control", text: "첫 줄\x01둘째 줄", want: ErrUnsupportedText},
 		{name: "missing glyph", text: "한글 기억 😀", want: ErrUnsupportedText},
 	}
 	for _, test := range tests {
@@ -143,4 +144,47 @@ func extractPDFText(t *testing.T, data []byte) (string, int) {
 
 func normalizeExtractedText(text string) string {
 	return strings.TrimPrefix(text, "\n")
+}
+
+func TestGenerateNormalizesLayoutWhitespace(t *testing.T) {
+	input := "위치\t창고\r\n약속\r완료"
+	doc, err := Generate(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := extractPDFText(t, doc.Bytes)
+	if normalizeExtractedText(got) != "위치 창고\n약속\n완료" {
+		t.Fatalf("extracted %q", got)
+	}
+	sum := sha256.Sum256([]byte(input))
+	if doc.LogicalChars != len([]rune(input)) || doc.LogicalTextSHA256 != hex.EncodeToString(sum[:]) {
+		t.Fatal("logical metadata must describe the original input")
+	}
+}
+
+func TestGenerateAvoidsFontCopy(t *testing.T) {
+	font, err := os.ReadFile("assets/NotoSansKR-VF.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const input = "기억"
+	allocated := func(run func() (Document, error)) uint64 {
+		t.Helper()
+		var start, end runtime.MemStats
+		runtime.ReadMemStats(&start)
+		doc, err := run()
+		runtime.ReadMemStats(&end)
+		if err != nil || doc.FontAssetBytes != len(font) {
+			t.Fatalf("font bytes %d, error %v", doc.FontAssetBytes, err)
+		}
+		return end.TotalAlloc - start.TotalAlloc
+	}
+	direct := func() (Document, error) { return generateWithFont(input, font) }
+	allocated(direct) // warm the renderer before comparing the same document
+	render := allocated(direct)
+	total := allocated(func() (Document, error) { return Generate(input) })
+	t.Logf("Generate %d B, renderer %d B, font %d B", total, render, len(font))
+	if total > render+uint64(len(font))/2 {
+		t.Fatal("Generate allocated an extra font-sized buffer")
+	}
 }

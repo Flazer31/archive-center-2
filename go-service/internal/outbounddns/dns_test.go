@@ -62,6 +62,28 @@ func TestNormalizeMatchesAC1(t *testing.T) {
 	}
 }
 
+func TestOutboundDialerUsesRequestedDNSNetworkAndHTTPDefaults(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	d := outboundDialer([]string{listener.Addr().String()})
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	conn, err := d.Resolver.Dial(ctx, "tcp", "unused.invalid:53")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if got := conn.RemoteAddr().Network(); got != "tcp" {
+		t.Errorf("resolver requested tcp, opened %s", got)
+	}
+	if d.Timeout != 30*time.Second || d.KeepAlive != 30*time.Second {
+		t.Errorf("HTTP dialer timeout=%v keepalive=%v, want Go defaults of 30s", d.Timeout, d.KeepAlive)
+	}
+}
+
 type fakeDNS struct {
 	mu      sync.Mutex
 	queries map[string][]uint16

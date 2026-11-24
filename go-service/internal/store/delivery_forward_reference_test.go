@@ -74,6 +74,10 @@ func TestDeliverDefinesForwardBasisOnSource(t *testing.T) {
 				if i == 0 {
 					km.Body = "[text B1]"
 					line = deliveryLine(km, names, basis, aware)
+				} else if secret {
+					subject := " (what: " + body + ")"
+					line += subject
+					charge += len([]rune(subject))
 				}
 				oldLines = append(oldLines, line)
 			}

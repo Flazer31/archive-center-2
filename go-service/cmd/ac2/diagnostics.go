@@ -39,8 +39,18 @@ func (m *models) diagnosticSettings() observe.ReportSettings {
 
 func (m *models) diagnosticSecrets() []string {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return []string{m.saved.Key, m.saved.EmbedKey, m.flagCritic.Key, m.envKey}
+	keys := []string{m.saved.Key, m.saved.EmbedKey, m.flagCritic.Key, m.envKey}
+	m.mu.RUnlock()
+	if decision, err := m.db.DecisionSettings(m.box); err == nil {
+		keys = append(keys, decision.Key)
+	}
+	if prep, err := m.db.PreprocessSettings(m.box); err == nil {
+		keys = append(keys, prep.AI.Key)
+	}
+	if narrative, err := m.db.NarrativeSettings(m.box); err == nil {
+		keys = append(keys, narrative.AI.Key)
+	}
+	return keys
 }
 
 func (s *status) diagnosticFailures() []observe.ReportFailure {

@@ -165,9 +165,10 @@ type candidate struct {
 }
 
 type renderedRecord struct {
-	memory *memory.KnownMemory
-	basis  string
-	aware  []memory.KnownAwareness
+	memory  *memory.KnownMemory
+	basis   string
+	aware   []memory.KnownAwareness
+	carried []memory.KnownAwareness // before display deduplication, including each boundary's target
 }
 
 // Deliver chooses the memory for a request (step 7). Generation's Select
@@ -472,13 +473,16 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	// never placed in one lane and shown in the other.
 	singleRank := order
 	// secretAsShown is take's rule for a record counted in the secret lane:
-	// its own records' awareness, the record its basis points to, or the
+	// its own records' awareness, its closing effect, its basis, or the
 	// event it completes (a completing fact, as when that event is not
 	// delivered). A record only recorded at a secret event is not a secret
 	// itself: it is shown with that protection but counted in the general
 	// lane (take below).
 	secretAsShown := func(m *memory.KnownMemory, completes string) bool {
 		_, s := protect(carried[m.ID], nil, false)
+		if by, ok := closed[m.ID]; ok {
+			_, s = protect(carried[by.Ref], nil, s)
+		}
 		if completes != "" {
 			_, s = protect(carried[completes], nil, s)
 			// and what that event was recorded at (1.3: an event whose
@@ -638,6 +642,7 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 				}
 			}
 		}
+		carriedAwareness := own
 		own = distinctAwareness(own)
 		shown := withoutRepeatedRoles(currentValues(*c.mem, kept, sup), names)
 		if isClosed {
@@ -686,7 +691,7 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			secretCounted[c.id] = true
 		}
 		lines = append(lines, line)
-		rendered = append(rendered, renderedRecord{&shown, basis, own})
+		rendered = append(rendered, renderedRecord{memory: &shown, basis: basis, aware: own, carried: carriedAwareness})
 		out.IDs = append(out.IDs, c.id)
 		if shownSecret {
 			if out.SecretIDs == nil {
@@ -812,9 +817,8 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 				results[id] = "contrast_removed"
 				continue
 			}
-			// a completing fact whose event contrast removed is now shown
-			// without it: it keeps the event's protection
-			if at := parent[id]; at != "" && removed(at) {
+			// A fact shown without its event in this pass carries its protection.
+			if at := parent[id]; at != "" && results[at] != "taken" {
 				alone[id] = at
 			}
 			// A removed basis definition can make this row longer. Skip only
@@ -835,7 +839,6 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 	}
 	out.Whole = append([]string(nil), lines...)
 	shareDeliveryBasis(lines, out.IDs, rendered, marks, names, secretCounted, sourceDef)
-	out.Lines = append([]string(nil), lines...)
 	// the name relations whose name the scene uses take the room the
 	// records left in their lane (they never push a record out: measured
 	// 11-15, put first they pushed out L-140's needed old memory); shown
@@ -853,6 +856,27 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 			out.SecretChars += size
 		}
 	}
+	// Records and aliases have their room already. Only the additional
+	// boundary text spends secret room, including on general-counted lines
+	// protected through at. A full lane still delivers the original line.
+	labels := make([]boundaryLabel, len(rendered))
+	for i, r := range rendered {
+		base := plainBoundary(r.aware, names)
+		labels[i] = base
+		if !out.SecretIDs[r.memory.ID] {
+			continue
+		}
+		label := namedBoundary(r, names, secret, bodies)
+		labels[i].targets = label.targets
+		extra := utf8.RuneCountInString(label.suffix) - utf8.RuneCountInString(base.suffix)
+		if extra <= req.Secret-out.SecretChars {
+			lines[i] = strings.TrimSuffix(lines[i], base.suffix) + label.suffix
+			out.Whole[i] = strings.TrimSuffix(out.Whole[i], base.suffix) + label.suffix
+			labels[i] = label
+			out.SecretChars += extra
+		}
+	}
+	out.Lines = append([]string(nil), lines...)
 	var bodyLines []string
 	if len(req.Body) > 0 {
 		bodyLines = append([]string{body.Header}, req.Body...)
@@ -874,11 +898,11 @@ func (d *DB) Deliver(scope []memory.ScopedTurn, req DeliveryRequest) (Delivery, 
 		lane[l] = append(lane[l], i)
 	}
 	if GroupAwareness {
-		sent = groupLines(lines, rendered, all0[0], names)
+		sent = groupLines(lines, labels, all0[0])
 	}
 	for l := range lane {
 		if GroupAwareness {
-			laneLines[l] = groupLines(lines, rendered, lane[l], names)
+			laneLines[l] = groupLines(lines, labels, lane[l])
 			continue
 		}
 		for _, i := range lane[l] {

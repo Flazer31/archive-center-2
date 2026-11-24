@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -451,7 +452,7 @@ func applyPending(root, runnerPath string, hook applyHook) (Result, error) {
 	for i, file := range files {
 		if hook != nil {
 			if err := hook(file.Rel, i); err != nil {
-				_, rollbackErr := rollback(root, paths, state, false)
+				_, rollbackErr := rollback(root, paths, state, true)
 				if rollbackErr != nil {
 					return Result{}, updateErr("apply_and_rollback_failed", fmt.Errorf("apply: %v; rollback: %w", err, rollbackErr))
 				}
@@ -469,7 +470,7 @@ func applyPending(root, runnerPath string, hook applyHook) (Result, error) {
 			applyErr = replaceFile(file.Src, target, file.Mode, file.Integrity)
 		}
 		if applyErr != nil {
-			_, rollbackErr := rollback(root, paths, state, false)
+			_, rollbackErr := rollback(root, paths, state, true)
 			if rollbackErr != nil {
 				return Result{}, updateErr("apply_and_rollback_failed", fmt.Errorf("apply: %v; rollback: %w", applyErr, rollbackErr))
 			}
@@ -479,7 +480,7 @@ func applyPending(root, runnerPath string, hook applyHook) (Result, error) {
 	state.Status = "applied_pending_health"
 	state.UpdatedAt = now()
 	if err := writeJSONAtomic(paths.state, state); err != nil {
-		_, rollbackErr := rollback(root, paths, state, false)
+		_, rollbackErr := rollback(root, paths, state, true)
 		if rollbackErr != nil {
 			return Result{}, updateErr("apply_and_rollback_failed", fmt.Errorf("state: %v; rollback: %w", err, rollbackErr))
 		}
@@ -1102,10 +1103,46 @@ func comparePackageVersions(left, right string) int {
 	if rp == "" {
 		return -1
 	}
-	if lp > rp {
-		return 1
+	return ComparePrerelease(lp, rp)
+}
+
+var numberedPrerelease = regexp.MustCompile(`([A-Za-z]+)([0-9]+)`)
+
+// ComparePrerelease orders prerelease identifiers for the release check and installer.
+func ComparePrerelease(a, b string) int {
+	if a == b {
+		return 0
 	}
-	return -1
+	left, right := prereleaseParts(a), prereleaseParts(b)
+	for i := 0; i < len(left) || i < len(right); i++ {
+		if i >= len(left) {
+			return -1
+		}
+		if i >= len(right) {
+			return 1
+		}
+		ln, lnum := strconv.Atoi(left[i])
+		rn, rnum := strconv.Atoi(right[i])
+		switch {
+		case lnum == nil && rnum == nil && ln != rn:
+			if ln < rn {
+				return -1
+			}
+			return 1
+		case lnum == nil && rnum != nil:
+			return -1
+		case lnum != nil && rnum == nil:
+			return 1
+		case left[i] != right[i]:
+			return strings.Compare(left[i], right[i])
+		}
+	}
+	return 0
+}
+
+func prereleaseParts(value string) []string {
+	value = numberedPrerelease.ReplaceAllString(value, `$1.$2`)
+	return strings.FieldsFunc(value, func(r rune) bool { return r == '.' || r == '-' || r == '_' })
 }
 
 func parsePackageVersion(value string) ([3]int, string) {
@@ -1199,14 +1236,16 @@ func rollback(root string, paths rootPaths, state State, clearPending bool) (Res
 			}
 		}
 	}
+	if clearPending {
+		if err := os.Remove(paths.pending); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return Result{}, err
+		}
+	}
 	state.Status = "rolled_back"
 	state.TargetVersion = ""
 	state.UpdatedAt = now()
 	if err := writeJSONAtomic(paths.state, state); err != nil {
 		return Result{}, err
-	}
-	if clearPending {
-		_ = os.Remove(paths.pending)
 	}
 	if state.BackupDir != "" {
 		_ = os.RemoveAll(filepath.Join(paths.updates, filepath.FromSlash(state.BackupDir)))
@@ -1229,7 +1268,7 @@ func replaceFile(src, target string, mode fs.FileMode, integrity *manifestFile) 
 	if err := copyFile(src, tmp, mode); err != nil {
 		return err
 	}
-	// Verify the exact copy to be installed, before removing the target. A
+	// Verify the exact copy to be installed, before replacing the target. A
 	// changed extracted payload uses the existing apply-failure rollback journal.
 	// Backups and the self-excluded package manifest have no manifest entry.
 	if integrity != nil {
@@ -1237,10 +1276,6 @@ func replaceFile(src, target string, mode fs.FileMode, integrity *manifestFile) 
 			os.Remove(tmp)
 			return err
 		}
-	}
-	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
-		os.Remove(tmp)
-		return err
 	}
 	if err := osfile.Rename(tmp, target); err != nil {
 		os.Remove(tmp)

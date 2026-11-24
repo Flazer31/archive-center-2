@@ -16,4 +16,5 @@ for (const f of process.argv.slice(2)) {
   if (api !== "3.0") errs.push("api must be 3.0, got " + api);
   if (ver && cmp(ver, "0.0.1") === -1) errs.push("version must be >= 0.0.1, got " + ver);
   console.log(f, errs.length ? "FAIL " + errs.join("; ") : "OK", "name=" + name, "version=" + ver);
+  if (errs.length) process.exitCode = 1;
 }

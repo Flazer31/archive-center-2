@@ -305,7 +305,8 @@ func TestDeliverEventShowsTheSecretRecordedAtIt(t *testing.T) {
 	if has(d.IDs, fact) || !has(d.IDs, event) || !has(d.IDs, other) {
 		t.Fatalf("fixture: %v", d.IDs)
 	}
-	if !d.SecretIDs[event] || d.SecretChars != 0 || !strings.Contains(d.Block, "hide from: 도윤") {
+	subject := " (what: " + it.Memories[1].Body + ")"
+	if !d.SecretIDs[event] || d.SecretChars != len([]rune(subject)) || !strings.Contains(d.Block, "hide from: 도윤"+subject) {
 		t.Fatalf("event without its secret fact: secret %v chars %d\n%s", d.SecretIDs, d.SecretChars, d.Block)
 	}
 	if d.SecretIDs[other] {

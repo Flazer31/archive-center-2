@@ -38,6 +38,7 @@ Rules:
 - Changed values: in an event's "effects" write {"about", "slot", "before", "value", "delta", "was"}; for numbers give the old value, the new value and the change.
 - "at" is the id of the event a fact or view comes from: a KNOWN event (M12) or a new event in this answer (m1). Dates and times go in an event's "time". Leave "at" out when there is no such event.
 - New items and refs go inside the "memories" array. actor, target, object, place, speaker and listener are arrays inside "roles".
+- For an event, put in "seen_by" only people outside its roles whom the text shows seeing or hearing it.
 - For a sale, gift, loan or return, follow the item that changes hands. Put that item in object, only those handing it over in actor, and only those receiving it in target, even when the buyer is the subject of the sentence. Say which kind of transfer it was in the body, and put money paid in the event's effects. On a loan the borrower holds the item temporarily and ownership stays as it was.
   - If an item comes back for a refund, its return sets the direction of those roles, and the money paid back goes in effects. A refund by itself does not establish that the item came back.
   - For a reservation awaiting collection, name the reserved item in object and leave its target empty. A deposit paid now belongs in effects. If a different item was handed over, say who received that item in the body. Keep any agreed delivery terms (item, price and when it is due) with the commitment under the promise rules below.
@@ -55,6 +56,7 @@ Rules:
 - When it matters who can recognize someone, say in the encounter who saw whom and which name or title the text shows each person heard or used for them. Seeing a face or hearing a cover name does not by itself reveal the identity behind it.
 - For a secret, who knows, who does not know and who must not be told go in "boundaries" (below), naming only the people the text shows.
 - A secret the text shows: write the true thing once, on one item; who does not know it or is kept from it goes in "boundaries". Do not copy it into another item.
+- If a view would restate a secret in THIS TURN or KNOWN, including a view that someone does not know it, set "basis.ref" to the record that states the secret and keep the view in the person's own perspective.
 - Something false that someone says (a lie, an excuse, a cover story): an event with speaker and listener, the body saying what was said, and "differs": "yes". A belief or view the text shows to be wrong: "differs": "yes".
 - Reasons: when the text says why someone believes, feels or decides something, write that reason in the view's body.
 - fact status: active, fulfilled, partial, missed, paused, resumed, cancelled, impossible, refused, changed (질문·위험: active, resolved, changed). expressed: 속으로만, 행동으로, 고백, 억누름.

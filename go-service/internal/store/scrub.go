@@ -129,7 +129,8 @@ func findRows(tx *sql.Tx, q string, args ...any) ([]foundRow, error) {
 }
 
 func scrubObservations(tx *sql.Tx, chat, text string, current map[string]bool) error {
-	all, err := findRows(tx, `SELECT id, event FROM raw_observations WHERE (chat_id=? OR chat_id2=?) AND INSTR(event, ?)>0`, chat, chat, fragment(text))
+	match, needle := storedTextMatch("event", text)
+	all, err := findRows(tx, `SELECT id, event FROM raw_observations WHERE (chat_id=? OR chat_id2=?) AND `+match, chat, chat, needle)
 	if err != nil {
 		return err
 	}
@@ -137,13 +138,13 @@ func scrubObservations(tx *sql.Tx, chat, text string, current map[string]bool) e
 	// earlier reply stayed in them): only that text field is cleared, when it
 	// shows the dropped body. Which chat such a row came from is not known, so
 	// a text another chat's observations also hold is left
-	bare, err := findRows(tx, `SELECT id, event FROM raw_observations WHERE chat_id IS NULL AND chat_id2 IS NULL AND hook IN ('input','afterRequest') AND INSTR(event, ?)>0`, fragment(text))
+	bare, err := findRows(tx, `SELECT id, event FROM raw_observations WHERE chat_id IS NULL AND chat_id2 IS NULL AND hook IN ('input','afterRequest') AND `+match, needle)
 	if err != nil {
 		return err
 	}
 	if len(bare) > 0 {
 		var elsewhere int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM raw_observations WHERE ((chat_id IS NOT NULL AND chat_id<>?) OR (chat_id2 IS NOT NULL AND chat_id2<>?)) AND INSTR(event, ?)>0`, chat, chat, fragment(text)).Scan(&elsewhere); err != nil {
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM raw_observations WHERE ((chat_id IS NOT NULL AND chat_id<>?) OR (chat_id2 IS NOT NULL AND chat_id2<>?)) AND `+match, chat, chat, needle).Scan(&elsewhere); err != nil {
 			return err
 		}
 		if elsewhere > 0 {
@@ -291,8 +292,20 @@ func scrubSources(tx *sql.Tx, sessionKey string, turns map[int]bool, text string
 	// too: the jobs of the rows' turns are looked at as well as the jobs
 	// whose source holds the text (a source keeps the key it was read with)
 	plain := memory.PlainText(text)
-	q := `SELECT job_id, source FROM gen_jobs WHERE session_key=? AND (INSTR(source, ?)>0 OR INSTR(source, ?)>0`
-	args := []any{sessionKey, fragment(text), fragment(plain)}
+	plainPart := fragment(plain)
+	raw := fragment(text)
+	if plainPart == "" || raw == "" {
+		// JobFor stores the source with json.Marshal. The exact JSON string
+		// also distinguishes two different images that share an HTML tag.
+		encoded, _ := json.Marshal(text)
+		raw = string(encoded)
+	}
+	q := `SELECT job_id, source FROM gen_jobs WHERE session_key=? AND (INSTR(source, ?)>0`
+	args := []any{sessionKey, raw}
+	if plainPart != "" && plainPart != raw {
+		q += ` OR INSTR(source, ?)>0`
+		args = append(args, plainPart)
+	}
 	for id := range turns {
 		q += ` OR turn_id=?`
 		args = append(args, id)
@@ -350,13 +363,12 @@ func usedElsewhere(tx *sql.Tx, sessionKey, text string) (bool, error) {
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM revisions WHERE session_key<>? AND data=?`, sessionKey, text).Scan(&n); err != nil || n > 0 {
 		return n > 0, err
 	}
-	frag := fragment(text)
-	for _, q := range []string{
-		`SELECT source FROM branch_copies WHERE session_key<>? AND INSTR(source, ?)>0`,
-		`SELECT source FROM session_past WHERE session_key<>? AND INSTR(source, ?)>0`,
-		`SELECT own_source FROM session_past WHERE session_key<>? AND INSTR(COALESCE(own_source, ''), ?)>0`,
+	for _, src := range []struct{ table, column string }{
+		{"branch_copies", "source"}, {"session_past", "source"}, {"session_past", "own_source"},
 	} {
-		stored, err := findTexts(tx, q, sessionKey, frag)
+		match, needle := storedTextMatch(src.column, text)
+		q := "SELECT " + src.column + " FROM " + src.table + " WHERE session_key<>? AND " + match
+		stored, err := findTexts(tx, q, sessionKey, needle)
 		if err != nil {
 			return false, err
 		}
@@ -367,6 +379,17 @@ func usedElsewhere(tx *sql.Tx, sessionKey, text string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// Observations may use either JSON encoder. When every character is subject
+// to escaping, search the decoded strings. Such text contains no LIKE
+// wildcards or '='. An unreadable source is searched as text, as in sourceHolds.
+func storedTextMatch(column, text string) (string, string) {
+	if part := fragment(text); part != "" {
+		return "INSTR(" + column + ", ?)>0", part
+	}
+	doc := "IF(JSON_VALID(" + column + "), " + column + ", JSON_QUOTE(" + column + "))"
+	return "JSON_SEARCH(" + doc + ", 'one', ?, '=') IS NOT NULL", "%" + text + "%"
 }
 
 // sourceHolds says a stored source (JSON) has the text as a row's data; an

@@ -124,7 +124,7 @@ func TestHUDReview19PreprocessErrorIsShownWhole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.st.injected("R19P", store.Delivery{Preprocess: &store.PreprocessRecord{Mode: "ai", Ran: "go", Fallback: "ai_failed", Error: "provider 503: synthetic protected phrase api_key=sk-" + "synthetic123456"}}, "", 2000, 4000, 0, nil, false)
+	h.st.injected("R19P", store.Delivery{Preprocess: &store.PreprocessRecord{Mode: "ai", Ran: "go", Fallback: "ai_failed", Error: "provider 503: synthetic protected phrase api_key=sk-" + "synthetic123456"}}, "", 2000, 4000, 0, nil, false, nil)
 	view := hudGet(t, h, "R19P")
 	row := hudTurnView(t, view, 1)
 	prep := row["injection"].(map[string]any)["preprocess"].(map[string]any)

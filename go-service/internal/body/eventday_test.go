@@ -36,3 +36,31 @@ func TestEventDay(t *testing.T) {
 		t.Fatalf("no turn day: %+v", got)
 	}
 }
+
+func TestImplausibleStoryDays(t *testing.T) {
+	turn := day(30)
+	for _, digits := range []string{"1000000000", "9999999999999999999999999999"} {
+		if got := DayOf("Day " + digits); got.Known() {
+			t.Errorf("Day %s: %+v", digits, got)
+		}
+		for _, suffix := range []string{" days after", " days earlier", "일 후"} {
+			if got := EventDay(digits+suffix, turn); got.Known() {
+				t.Errorf("%s%s: %+v", digits, suffix, got)
+			}
+		}
+	}
+	if got := DayOf("Day 36500"); got != day(36500) {
+		t.Errorf("century-long story: %+v", got)
+	}
+	if got := EventDay("36500 days before", turn); got != day(turn.N-36500) {
+		t.Errorf("century-long interval: %+v", got)
+	}
+	if t.Failed() {
+		return // do not run the cycle model with a known billion-day input
+	}
+	record := Record{ID: 1, Kind: "conception_exposure", Day: EventDay("1000000000 days after", turn)}
+	st, _, frozen := Assess(on, "seed", Person{Who: "N1", Spec: DefaultSpec(), Ref: turn}, []Record{record}, turn)
+	if len(st.Facts) != 1 || st.Facts[0].Day.Known() || len(frozen) != 0 {
+		t.Fatalf("undated exposure should remain a fact without a cycle draw: %+v %v", st.Facts, frozen)
+	}
+}
